@@ -749,46 +749,4 @@ export default function SchoolfessApp() {
       </main>
     </div>
   );
-}                     <th className="py-3 px-4 text-center">Aksi</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-700/50">
-                    {filteredStudents.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className="text-center py-6 text-slate-400">Siswa tidak ditemukan.</td>
-                      </tr>
-                    ) : (
-                      filteredStudents.map((s) => (
-                        <tr key={s.nisn} className="hover:bg-slate-700/30 transition">
-                          <td className="py-3 px-4 font-mono text-indigo-300">{s.nisn}</td>
-                          <td className="py-3 px-4 font-medium text-slate-200">{s.name}</td>
-                          <td className="py-3 px-4 text-slate-300">{s.class}</td>
-                          <td className="py-3 px-4">
-                            <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded-full font-medium">
-                              {s.status || 'Aktif'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => handleDeleteStudent(s.nisn)}
-                              className="text-slate-400 hover:text-rose-400 transition"
-                              title="Hapus Siswa"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-      </main>
-    </div>
-  );
 }
