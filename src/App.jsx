@@ -3,9 +3,10 @@ import {
   MessageCircle, Heart, Send, Search, Users, Database, 
   ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle 
 } from 'lucide-react';
+import { supabase } from './supabaseClient';
 
 export default function SchoolfessApp() {
-  // State Sesi User: null (Belum login), { role: 'siswa', name: '...', nisn: '...' }, atau { role: 'admin', name: 'Admin YP17' }
+  // State Sesi User
   const [currentUser, setCurrentUser] = useState(() => {
     const saved = localStorage.getItem('yp17_session');
     return saved ? JSON.parse(saved) : null;
@@ -19,45 +20,10 @@ export default function SchoolfessApp() {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
-  // Initial Menfess Data
-  const [menfessList, setMenfessList] = useState(() => {
-    const saved = localStorage.getItem('yp17_menfess');
-    return saved ? JSON.parse(saved) : [
-      {
-        id: 1,
-        sender: 'Anonim',
-        recipient: 'Anak IPS 2',
-        category: '#Crush',
-        text: 'Halo yang duduk di barisan kedua dekat jendela IPS 2, senyummu bikin adem pas upacara tadi wkwk.',
-        likes: 12,
-        timestamp: '10 menit lalu',
-        comments: [
-          { id: 1, author: 'Rizky (XII IPA 1)', text: 'Wah spill orangnya bro!' }
-        ]
-      },
-      {
-        id: 2,
-        sender: 'Si Paling Piket',
-        recipient: 'Pengurus Kelas XI',
-        category: '#Curhat',
-        text: 'Tolong dong kalau piket kelas jangan cuma coret-coret papan tulis doang, sapunya juga dipakai 😭',
-        likes: 25,
-        timestamp: '1 jam lalu',
-        comments: []
-      }
-    ];
-  });
-
-  // Initial Student Database
-  const [students, setStudents] = useState(() => {
-    const saved = localStorage.getItem('yp17_students');
-    return saved ? JSON.parse(saved) : [
-      { nisn: '0071234561', name: 'Rizky Pratama', class: 'XII IPA 1', status: 'Aktif' },
-      { nisn: '0071234562', name: 'Siti Aisyah', class: 'XII IPS 2', status: 'Aktif' },
-      { nisn: '0082345671', name: 'Dimas Anggara', class: 'XI IPA 2', status: 'Aktif' },
-      { nisn: '0082345672', name: 'Dewi Lestari', class: 'X IPS 1', status: 'Aktif' },
-    ];
-  });
+  // Database States (Supabase)
+  const [menfessList, setMenfessList] = useState([]);
+  const [students, setStudents] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   // Form Menfess State
   const [sender, setSender] = useState('');
@@ -76,15 +42,7 @@ export default function SchoolfessApp() {
   const [studentSearch, setStudentSearch] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
 
-  // Sync to LocalStorage
-  useEffect(() => {
-    localStorage.setItem('yp17_menfess', JSON.stringify(menfessList));
-  }, [menfessList]);
-
-  useEffect(() => {
-    localStorage.setItem('yp17_students', JSON.stringify(students));
-  }, [students]);
-
+  // Sync Sesi User ke LocalStorage (Untuk tetap login saat refresh)
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('yp17_session', JSON.stringify(currentUser));
@@ -93,8 +51,67 @@ export default function SchoolfessApp() {
     }
   }, [currentUser]);
 
+  // 1. FETCH DATA DARI SUPABASE & INITIALIZE REAL-TIME SUBSCRIPTION
+  useEffect(() => {
+    fetchMenfess();
+    fetchStudents();
+
+    // Setup Real-time listener untuk tabel 'menfess'
+    const menfessChannel = supabase
+      .channel('public:menfess')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'menfess' }, () => {
+        fetchMenfess();
+      })
+      .subscribe();
+
+    // Setup Real-time listener untuk tabel 'students'
+    const studentChannel = supabase
+      .channel('public:students')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
+        fetchStudents();
+      })
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(menfessChannel);
+      supabase.removeChannel(studentChannel);
+    };
+  }, []);
+
+  // Fungsi Ambil Menfess dari Supabase
+  const fetchMenfess = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('menfess')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setMenfessList(data || []);
+    } catch (err) {
+      console.error('Error fetching menfess:', err.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Fungsi Ambil Siswa dari Supabase
+  const fetchStudents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('students')
+        .select('*')
+        .order('name', { ascending: true });
+
+      if (error) throw error;
+      setStudents(data || []);
+    } catch (err) {
+      console.error('Error fetching students:', err.message);
+    }
+  };
+
   // Handler Login
-  const handleLogin = (e) => {
+  const handleLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
 
@@ -107,14 +124,24 @@ export default function SchoolfessApp() {
         setLoginError('Username atau Password Admin salah! (Default: admin / admin123)');
       }
     } else {
-      // Login Siswa pakai NISN
-      const foundStudent = students.find(s => s.nisn === loginIdentifier.trim());
+      // Login Siswa via Supabase Database
+      const inputNisn = loginIdentifier.trim();
+      const foundStudent = students.find(s => s.nisn === inputNisn);
+      
       if (foundStudent) {
         const user = { role: 'siswa', name: foundStudent.name, nisn: foundStudent.nisn, class: foundStudent.class };
         setCurrentUser(user);
         setActiveTab('feed');
       } else {
-        setLoginError('NISN tidak terdaftar di database SMA YP17! Hubungi Admin.');
+        // Coba re-fetch kalau-kalau ada siswa baru terdaftar
+        const { data } = await supabase.from('students').select('*').eq('nisn', inputNisn).single();
+        if (data) {
+          const user = { role: 'siswa', name: data.name, nisn: data.nisn, class: data.class };
+          setCurrentUser(user);
+          setActiveTab('feed');
+        } else {
+          setLoginError('NISN tidak terdaftar di database SMA YP17! Hubungi Admin.');
+        }
       }
     }
   };
@@ -127,8 +154,8 @@ export default function SchoolfessApp() {
     setLoginError('');
   };
 
-  // Handler Kirim Menfess
-  const handleSendMenfess = (e) => {
+  // Handler Kirim Menfess ke Supabase
+  const handleSendMenfess = async (e) => {
     e.preventDefault();
     if (!text.trim() || !recipient.trim()) {
       alert('Pesan dan Penerima wajib diisi!');
@@ -136,82 +163,103 @@ export default function SchoolfessApp() {
     }
 
     const newPost = {
-      id: Date.now(),
       sender: sender.trim() || currentUser?.name || 'Anonim',
       recipient: recipient.trim(),
       category,
       text: text.trim(),
       likes: 0,
-      timestamp: 'Baru saja',
       comments: []
     };
 
-    setMenfessList([newPost, ...menfessList]);
-    setText('');
-    setRecipient('');
-    setSender('');
-    setActiveTab('feed');
-  };
+    const { error } = await supabase.from('menfess').insert([newPost]);
 
-  // Handler Like
-  const handleLike = (id) => {
-    setMenfessList(menfessList.map(item => 
-      item.id === id ? { ...item, likes: item.likes + 1 } : item
-    ));
-  };
-
-  // Handler Hapus Menfess (Admin)
-  const handleDeleteMenfess = (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus menfess ini?')) {
-      setMenfessList(menfessList.filter(item => item.id !== id));
+    if (error) {
+      alert('Gagal mengirim menfess: ' + error.message);
+    } else {
+      setText('');
+      setRecipient('');
+      setSender('');
+      setActiveTab('feed');
     }
   };
 
-  // Handler Komentar
-  const handleAddComment = (id) => {
-    const commentText = commentInputs[id];
-    if (!commentText || !commentText.trim()) return;
+  // Handler Like Menfess di Supabase
+  const handleLike = async (id, currentLikes) => {
+    const { error } = await supabase
+      .from('menfess')
+      .update({ likes: (currentLikes || 0) + 1 })
+      .eq('id', id);
 
-    setMenfessList(menfessList.map(item => {
-      if (item.id === id) {
-        return {
-          ...item,
-          comments: [...item.comments, { 
-            id: Date.now(), 
-            author: currentUser?.role === 'admin' ? 'Admin YP17' : currentUser?.name || 'Siswa YP17', 
-            text: commentText.trim() 
-          }]
-        };
-      }
-      return item;
-    }));
-
-    setCommentInputs({ ...commentInputs, [id]: '' });
+    if (error) console.error('Error like:', error.message);
   };
 
-  // Handler Tambah Siswa (Admin)
-  const handleAddStudent = (e) => {
+  // Handler Hapus Menfess (Admin)
+  const handleDeleteMenfess = async (id) => {
+    if (window.confirm('Apakah Anda yakin ingin menghapus menfess ini?')) {
+      const { error } = await supabase.from('menfess').delete().eq('id', id);
+      if (error) alert('Gagal menghapus: ' + error.message);
+    }
+  };
+
+  // Handler Komentar di Supabase (JSONB array)
+  const handleAddComment = async (item) => {
+    const commentText = commentInputs[item.id];
+    if (!commentText || !commentText.trim()) return;
+
+    const newComment = {
+      id: Date.now(),
+      author: currentUser?.role === 'admin' ? 'Admin YP17' : currentUser?.name || 'Siswa YP17',
+      text: commentText.trim()
+    };
+
+    const updatedComments = [...(item.comments || []), newComment];
+
+    const { error } = await supabase
+      .from('menfess')
+      .update({ comments: updatedComments })
+      .eq('id', item.id);
+
+    if (error) {
+      alert('Gagal menambah komentar: ' + error.message);
+    } else {
+      setCommentInputs({ ...commentInputs, [item.id]: '' });
+    }
+  };
+
+  // Handler Tambah Siswa ke Supabase (Admin)
+  const handleAddStudent = async (e) => {
     e.preventDefault();
     if (!newNisn || !newName) {
       alert('NISN dan Nama lengkap wajib diisi!');
       return;
     }
-    if (students.some(s => s.nisn === newNisn)) {
-      alert('NISN sudah terdaftar!');
-      return;
-    }
 
-    setStudents([...students, { nisn: newNisn, name: newName, class: newClass, status: 'Aktif' }]);
-    setNewNisn('');
-    setNewName('');
-    alert('Data siswa berhasil ditambahkan!');
+    const { error } = await supabase.from('students').insert([
+      { nisn: newNisn.trim(), name: newName.trim(), class: newClass, status: 'Aktif' }
+    ]);
+
+    if (error) {
+      alert('Gagal menambah siswa: ' + error.message);
+    } else {
+      setNewNisn('');
+      setNewName('');
+      alert('Data siswa berhasil ditambahkan ke database cloud!');
+    }
   };
 
-  // Handler Hapus Siswa (Admin)
-  const handleDeleteStudent = (nisn) => {
+  // Handler Hapus Siswa dari Supabase (Admin)
+  const handleDeleteStudent = async (nisn) => {
     if (window.confirm(`Hapus data siswa dengan NISN ${nisn}?`)) {
-      setStudents(students.filter(s => s.nisn !== nisn));
+      const { error } = await supabase.from('students').delete().eq('nisn', nisn);
+      if (error) alert('Gagal menghapus siswa: ' + error.message);
     }
+  };
+
+  // Helper Format Waktu
+  const formatTimestamp = (dateStr) => {
+    if (!dateStr) return 'Baru saja';
+    const date = new Date(dateStr);
+    return date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' · ' + date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
   };
 
   // Filters
@@ -229,13 +277,12 @@ export default function SchoolfessApp() {
     s.class.toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  // APP VIEW 1: JIKA BELUM LOGIN (TAMPILKAN HALAMAN LOGIN)
+  // APP VIEW 1: JIKA BELUM LOGIN
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans">
         <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
           
-          {/* Header Portal Login */}
           <div className="text-center space-y-2">
             <div className="inline-flex bg-indigo-600 text-white p-3 rounded-2xl font-bold text-2xl shadow-lg mb-1">
               YP17
@@ -244,7 +291,6 @@ export default function SchoolfessApp() {
             <p className="text-xs text-slate-400">Silakan login untuk mengakses platform aspirasi sekolah</p>
           </div>
 
-          {/* Switch Tab Role (Siswa / Admin) */}
           <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-700">
             <button
               type="button"
@@ -262,7 +308,6 @@ export default function SchoolfessApp() {
             </button>
           </div>
 
-          {/* Error Banner */}
           {loginError && (
             <div className="bg-rose-950/60 border border-rose-800/80 text-rose-300 p-3 rounded-xl text-xs flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
@@ -270,7 +315,6 @@ export default function SchoolfessApp() {
             </div>
           )}
 
-          {/* Form Login */}
           <form onSubmit={handleLogin} className="space-y-4">
             {loginRole === 'siswa' ? (
               <div>
@@ -286,7 +330,7 @@ export default function SchoolfessApp() {
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
                   />
                 </div>
-                <p className="text-[10px] text-slate-500 mt-1">Gunakan NISN yang sudah terdaftar di data sekolah.</p>
+                <p className="text-[10px] text-slate-500 mt-1">Gunakan NISN yang terdaftar di database cloud.</p>
               </div>
             ) : (
               <>
@@ -330,7 +374,6 @@ export default function SchoolfessApp() {
             </button>
           </form>
 
-          {/* Quick Demo Info */}
           <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50 text-[11px] text-slate-400 space-y-1">
             <p className="font-semibold text-slate-300">💡 Akses Uji Coba (Demo):</p>
             <p>• <b>NISN Siswa Demo:</b> <code className="text-indigo-300">0071234561</code> (Rizky Pratama)</p>
@@ -342,7 +385,7 @@ export default function SchoolfessApp() {
     );
   }
 
-  // APP VIEW 2: SETELAH LOGIN (UTAMA)
+  // APP VIEW 2: HALAMAN UTAMA (SETELAH LOGIN)
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12">
       
@@ -363,7 +406,7 @@ export default function SchoolfessApp() {
             </div>
           </div>
           
-          {/* Navigation Controls */}
+          {/* Nav Buttons */}
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
             <nav className="flex bg-slate-900 p-1 rounded-xl border border-slate-700 gap-1">
               <button 
@@ -373,7 +416,6 @@ export default function SchoolfessApp() {
                 Feed Menfess
               </button>
               
-              {/* Siswa & Admin Boleh Kirim Menfess */}
               <button 
                 onClick={() => setActiveTab('post')}
                 className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${activeTab === 'post' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
@@ -381,7 +423,6 @@ export default function SchoolfessApp() {
                 Kirim Menfess
               </button>
 
-              {/* HANYA ADMIN YANG BISA LIHAT TAB DATABASE SISWA */}
               {currentUser.role === 'admin' && (
                 <button 
                   onClick={() => setActiveTab('database')}
@@ -439,9 +480,13 @@ export default function SchoolfessApp() {
 
             {/* List Menfess */}
             <div className="space-y-4">
-              {filteredMenfess.length === 0 ? (
+              {loading ? (
                 <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
-                  <p className="text-slate-400 text-sm">Belum ada menfess ditemukan.</p>
+                  <p className="text-slate-400 text-sm animate-pulse">Menghubungkan ke database Supabase...</p>
+                </div>
+              ) : filteredMenfess.length === 0 ? (
+                <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
+                  <p className="text-slate-400 text-sm">Belum ada menfess ditemukan di Supabase.</p>
                 </div>
               ) : (
                 filteredMenfess.map((item) => (
@@ -450,7 +495,7 @@ export default function SchoolfessApp() {
                     <div className="flex justify-between items-start">
                       <div className="flex items-center gap-2">
                         <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
-                          {item.sender.charAt(0).toUpperCase()}
+                          {(item.sender || 'A').charAt(0).toUpperCase()}
                         </div>
                         <div>
                           <h3 className="text-sm font-semibold text-slate-200">{item.sender}</h3>
@@ -463,11 +508,10 @@ export default function SchoolfessApp() {
                           {item.category}
                         </span>
 
-                        {/* FITUR MODERASI HANYA UNTUK ADMIN */}
                         {currentUser.role === 'admin' && (
                           <button
                             onClick={() => handleDeleteMenfess(item.id)}
-                            title="Hapus Menfess (Fitur Admin)"
+                            title="Hapus Menfess (Admin)"
                             className="text-slate-500 hover:text-rose-400 p-1 transition"
                           >
                             <Trash2 className="w-4 h-4" />
@@ -479,20 +523,20 @@ export default function SchoolfessApp() {
                     <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{item.text}</p>
 
                     <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs text-slate-400">
-                      <span>{item.timestamp}</span>
+                      <span>{formatTimestamp(item.created_at)}</span>
                       <button 
-                        onClick={() => handleLike(item.id)}
+                        onClick={() => handleLike(item.id, item.likes)}
                         className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 text-rose-400 transition border border-slate-700"
                       >
                         <Heart className="w-4 h-4 fill-rose-500 text-rose-500" />
-                        <span className="font-semibold">{item.likes}</span>
+                        <span className="font-semibold">{item.likes || 0}</span>
                       </button>
                     </div>
 
                     {/* Section Komentar */}
                     <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-2">
-                      {item.comments.map((comm) => (
-                        <div key={comm.id} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs">
+                      {(item.comments || []).map((comm, idx) => (
+                        <div key={comm.id || idx} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs">
                           <span className="font-semibold text-indigo-300">{comm.author}: </span>
                           <span className="text-slate-300">{comm.text}</span>
                         </div>
@@ -508,7 +552,7 @@ export default function SchoolfessApp() {
                           className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                         />
                         <button 
-                          onClick={() => handleAddComment(item.id)}
+                          onClick={() => handleAddComment(item)}
                           className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition"
                         >
                           Kirim
@@ -595,10 +639,9 @@ export default function SchoolfessApp() {
         {activeTab === 'database' && currentUser.role === 'admin' && (
           <div className="space-y-6">
             
-            {/* Box Admin Pendaftaran Siswa Baru */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
               <h3 className="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-indigo-400" /> Daftarkan / Tambah Data Siswa Baru
+                <UserPlus className="w-4 h-4 text-indigo-400" /> Daftarkan / Tambah Data Siswa Baru (Supabase)
               </h3>
               <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input 
@@ -636,12 +679,11 @@ export default function SchoolfessApp() {
               </form>
             </div>
 
-            {/* List Tabel Data Siswa */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
                 <div>
                   <h3 className="font-bold text-slate-100 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-indigo-400" /> Direktori Data Siswa SMA YP17
+                    <Database className="w-4 h-4 text-indigo-400" /> Direktori Data Siswa SMA YP17 (Supabase)
                   </h3>
                   <p className="text-xs text-slate-400">Total terdaftar: {students.length} siswa</p>
                 </div>
@@ -681,7 +723,49 @@ export default function SchoolfessApp() {
                           <td className="py-3 px-4 text-slate-300">{s.class}</td>
                           <td className="py-3 px-4">
                             <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded-full font-medium">
-                              {s.status}
+                              {s.status || 'Aktif'}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            <button
+                              onClick={() => handleDeleteStudent(s.nisn)}
+                              className="text-slate-400 hover:text-rose-400 transition"
+                              title="Hapus Siswa"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+      </main>
+    </div>
+  );
+}                     <th className="py-3 px-4 text-center">Aksi</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-700/50">
+                    {filteredStudents.length === 0 ? (
+                      <tr>
+                        <td colSpan="5" className="text-center py-6 text-slate-400">Siswa tidak ditemukan.</td>
+                      </tr>
+                    ) : (
+                      filteredStudents.map((s) => (
+                        <tr key={s.nisn} className="hover:bg-slate-700/30 transition">
+                          <td className="py-3 px-4 font-mono text-indigo-300">{s.nisn}</td>
+                          <td className="py-3 px-4 font-medium text-slate-200">{s.name}</td>
+                          <td className="py-3 px-4 text-slate-300">{s.class}</td>
+                          <td className="py-3 px-4">
+                            <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded-full font-medium">
+                              {s.status || 'Aktif'}
                             </span>
                           </td>
                           <td className="py-3 px-4 text-center">
