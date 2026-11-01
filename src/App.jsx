@@ -162,13 +162,13 @@ export default function SchoolfessApp() {
     e.preventDefault();
     setLoginError('');
 
-    if (loginIdentifier.trim() === 'admin' && loginPassword === 'admin123') {
+    if (loginIdentifier.trim() === 'admin' && loginPassword === 'Smayp1717') {
       const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
       setCurrentUser(user);
       setActiveTab('database');
       showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
     } else {
-      setLoginError('Username atau Password Admin salah! (Default: admin / admin123)');
+      setLoginError('Username atau Password Admin salah!');
     }
   };
 
@@ -562,11 +562,6 @@ export default function SchoolfessApp() {
               </form>
             </div>
           )}
-
-          <div className="bg-slate-950/60 p-3 rounded-2xl border border-amber-500/20 text-[11px] text-amber-200/60 space-y-1">
-            <p className="font-semibold text-amber-300">💡 Akses Uji Coba (Demo):</p>
-            <p>• <b>Login Admin:</b> User: <code className="text-amber-400">admin</code> | Pass: <code className="text-amber-400">admin123</code></p>
-          </div>
 
         </div>
       </div>
