@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   MessageCircle, Heart, Send, Search, Users, Database, 
-  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle, Edit3, X, Check, ArrowLeft, GraduationCap
+  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle, Edit3, X, Check, ArrowLeft, GraduationCap, AlertTriangle 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -14,9 +14,9 @@ export default function SchoolfessApp() {
 
   const [activeTab, setActiveTab] = useState('feed');
 
-  // Form Login State (Pilihan Portal: null = Belum Pilih, 'siswa' = Portal Siswa, 'admin' = Portal Admin)
+  // Form Login State
   const [selectedPortal, setSelectedPortal] = useState(null);
-  const [loginIdentifier, setLoginIdentifier] = useState(''); // NISN / Username
+  const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
 
@@ -36,10 +36,19 @@ export default function SchoolfessApp() {
   const [newName, setNewName] = useState('');
   const [newClass, setNewClass] = useState('X');
 
-  // Modal Edit Siswa State (Admin)
+  // Modal Edit & Konfirmasi CRUD State (Admin)
   const [editingStudent, setEditingStudent] = useState(null);
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('X');
+
+  // Modal Konfirmasi Interaktif (Untuk setiap aksi admin)
+  const [confirmModal, setConfirmModal] = useState({
+    isOpen: false,
+    title: '',
+    message: '',
+    actionType: null,
+    payload: null
+  });
 
   // Search & Filter
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -56,7 +65,7 @@ export default function SchoolfessApp() {
     }
   }, [currentUser]);
 
-  // FETCH DATA DARI SUPABASE & INITIALIZE REAL-TIME SUBSCRIPTION
+  // FETCH DATA DARI SUPABASE & REAL-TIME SUBSCRIPTION
   useEffect(() => {
     fetchMenfess();
     fetchStudents();
@@ -158,17 +167,17 @@ export default function SchoolfessApp() {
     setLoginError('');
   };
 
-  // Handler Kirim Menfess
+  // Handler Kirim Menfess (Penerima Opsional)
   const handleSendMenfess = async (e) => {
     e.preventDefault();
-    if (!text.trim() || !recipient.trim()) {
-      alert('Pesan dan Penerima wajib diisi!');
+    if (!text.trim()) {
+      alert('Isi pesan menfess wajib diisi!');
       return;
     }
 
     const newPost = {
       sender: sender.trim() || currentUser?.name || 'Anonim',
-      recipient: recipient.trim(),
+      recipient: recipient.trim() || 'Semua Warga YP17',
       category,
       text: text.trim(),
       likes: 0,
@@ -189,23 +198,13 @@ export default function SchoolfessApp() {
 
   // Handler Like
   const handleLike = async (id, currentLikes) => {
-    const { error } = await supabase
+    await supabase
       .from('menfess')
       .update({ likes: (currentLikes || 0) + 1 })
       .eq('id', id);
-
-    if (error) console.error('Error like:', error.message);
   };
 
-  // Handler Hapus Menfess
-  const handleDeleteMenfess = async (id) => {
-    if (window.confirm('Apakah Anda yakin ingin menghapus menfess ini?')) {
-      const { error } = await supabase.from('menfess').delete().eq('id', id);
-      if (error) alert('Gagal menghapus: ' + error.message);
-    }
-  };
-
-  // Handler Komentar
+  // Handler Komentar (Instant AJAX Update)
   const handleAddComment = async (item) => {
     const commentText = commentInputs[item.id];
     if (!commentText || !commentText.trim()) return;
@@ -227,70 +226,92 @@ export default function SchoolfessApp() {
       alert('Gagal menambah komentar: ' + error.message);
     } else {
       setCommentInputs({ ...commentInputs, [item.id]: '' });
+      // Update local state instantly for seamless AJAX feel
+      setMenfessList(menfessList.map(m => m.id === item.id ? { ...m, comments: updatedComments } : m));
     }
   };
 
-  // Handler Tambah Siswa (Admin)
-  const handleAddStudent = async (e) => {
-    e.preventDefault();
-    if (!newNisn.trim() || !newName.trim()) {
-      alert('NISN dan Nama lengkap wajib diisi!');
-      return;
-    }
-
-    const { error } = await supabase.from('students').insert([
-      { nisn: newNisn.trim(), name: newName.trim(), class: newClass }
-    ]);
-
-    if (error) {
-      alert('Gagal menambah siswa: ' + error.message);
-    } else {
-      setNewNisn('');
-      setNewName('');
-      alert('Data siswa berhasil ditambahkan!');
-      fetchStudents();
-    }
+  // --- ADMIN MODAL CONFIRMATION EXECUTOR ---
+  const triggerConfirmModal = (title, message, actionType, payload) => {
+    setConfirmModal({
+      isOpen: true,
+      title,
+      message,
+      actionType,
+      payload
+    });
   };
 
-  // Handler Modal Edit Siswa
-  const handleOpenEditModal = (student) => {
-    setEditingStudent(student);
-    setEditName(student.name);
-    setEditClass(student.class || 'X');
-  };
+  const executeConfirmedAction = async () => {
+    const { actionType, payload } = confirmModal;
+    setConfirmModal({ isOpen: false, title: '', message: '', actionType: null, payload: null });
 
-  // Handler Update Siswa
-  const handleUpdateStudent = async (e) => {
-    e.preventDefault();
-    if (!editName.trim()) {
-      alert('Nama siswa tidak boleh kosong!');
-      return;
-    }
-
-    const { error } = await supabase
-      .from('students')
-      .update({ name: editName.trim(), class: editClass })
-      .eq('nisn', editingStudent.nisn);
-
-    if (error) {
-      alert('Gagal mengedit data siswa: ' + error.message);
-    } else {
-      alert('Data siswa berhasil diperbarui!');
-      setEditingStudent(null);
-      fetchStudents();
-    }
-  };
-
-  // Handler Hapus Siswa
-  const handleDeleteStudent = async (nisn) => {
-    if (window.confirm(`Hapus data siswa dengan NISN ${nisn}?`)) {
-      const { error } = await supabase.from('students').delete().eq('nisn', nisn);
+    if (actionType === 'ADD_STUDENT') {
+      const { error } = await supabase.from('students').insert([payload]);
+      if (error) {
+        alert('Gagal menambah siswa: ' + error.message);
+      } else {
+        setNewNisn('');
+        setNewName('');
+        fetchStudents();
+      }
+    } else if (actionType === 'UPDATE_STUDENT') {
+      const { nisn, name, class: kelas } = payload;
+      const { error } = await supabase
+        .from('students')
+        .update({ name, class: kelas })
+        .eq('nisn', nisn);
+      if (error) {
+        alert('Gagal mengedit siswa: ' + error.message);
+      } else {
+        setEditingStudent(null);
+        fetchStudents();
+      }
+    } else if (actionType === 'DELETE_STUDENT') {
+      const { error } = await supabase.from('students').delete().eq('nisn', payload);
       if (error) {
         alert('Gagal menghapus siswa: ' + error.message);
       } else {
         fetchStudents();
       }
+    } else if (actionType === 'DELETE_MENFESS') {
+      const { error } = await supabase.from('menfess').delete().eq('id', payload);
+      if (error) {
+        alert('Gagal menghapus menfess: ' + error.message);
+      } else {
+        setMenfessList(menfessList.filter(m => m.id !== payload));
+      }
     }
+  };
+
+  // Submit Add Student Form
+  const handleAddStudentSubmit = (e) => {
+    e.preventDefault();
+    if (!newNisn.trim() || !newName.trim()) {
+      alert('NISN dan Nama lengkap wajib diisi!');
+      return;
+    }
+    triggerConfirmModal(
+      'Konfirmasi Tambah Siswa',
+      `Apakah Anda yakin ingin mendaftarkan ${newName.trim()} (NISN: ${newNisn.trim()}) ke database?`,
+      'ADD_STUDENT',
+      { nisn: newNisn.trim(), name: newName.trim(), class: newClass }
+    );
+  };
+
+  // Submit Update Student Form
+  const handleUpdateStudentSubmit = (e) => {
+    e.preventDefault();
+    if (!editName.trim()) {
+      alert('Nama siswa tidak boleh kosong!');
+      return;
+    }
+    triggerConfirmModal(
+      'Konfirmasi Perubahan Data',
+      `Simpan perubahan data untuk siswa ${editName.trim()}?`,
+      'UPDATE_STUDENT',
+      { nisn: editingStudent.nisn, name: editName.trim(), class: editClass }
+    );
   };
 
   // Format Waktu
@@ -316,14 +337,13 @@ export default function SchoolfessApp() {
   );
 
   // ==========================================
-  // APP VIEW 1: JIKA BELUM LOGIN (PORTAL SEPARATED)
+  // APP VIEW 1: LOGIN PORTAL
   // ==========================================
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans">
-        <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 relative overflow-hidden">
+        <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 relative overflow-hidden animate-fadeIn">
           
-          {/* Header Portal */}
           <div className="text-center space-y-2">
             <div className="inline-flex p-2 rounded-[1.75rem] shadow-lg mb-1 bg-transparent">
               <img src="/logo.png" alt="Logo YP17" className="h-16 w-auto object-contain rounded-[1.25rem]" />
@@ -332,16 +352,14 @@ export default function SchoolfessApp() {
             <p className="text-xs text-slate-400">Platform Aspirasi & Menfess Resmi SMA YP17</p>
           </div>
 
-          {/* TAMPILAN 1.A: PILIH PORTAL LOGIN (BELUM DIKLIK) */}
           {selectedPortal === null && (
             <div className="space-y-4 pt-2">
               <p className="text-xs text-center text-slate-300 font-semibold uppercase tracking-wider">Silakan Pilih Akses Login:</p>
               
-              {/* Pilihan 1: Portal Siswa */}
               <button
                 type="button"
                 onClick={() => { setSelectedPortal('siswa'); setLoginError(''); setLoginIdentifier(''); }}
-                className="w-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-700 hover:border-indigo-500/50 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow"
+                className="w-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-700 hover:border-indigo-500/50 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow transform hover:-translate-y-0.5 duration-200"
               >
                 <div className="w-12 h-12 rounded-xl bg-indigo-600/20 group-hover:bg-indigo-600 text-indigo-400 group-hover:text-white flex items-center justify-center transition border border-indigo-500/30">
                   <GraduationCap className="w-6 h-6" />
@@ -352,11 +370,10 @@ export default function SchoolfessApp() {
                 </div>
               </button>
 
-              {/* Pilihan 2: Portal Admin */}
               <button
                 type="button"
                 onClick={() => { setSelectedPortal('admin'); setLoginError(''); setLoginIdentifier(''); setLoginPassword(''); }}
-                className="w-full bg-slate-900 hover:bg-slate-700/60 border border-slate-700 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow"
+                className="w-full bg-slate-900 hover:bg-slate-700/60 border border-slate-700 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow transform hover:-translate-y-0.5 duration-200"
               >
                 <div className="w-12 h-12 rounded-xl bg-slate-800 group-hover:bg-slate-600 text-slate-300 group-hover:text-white flex items-center justify-center transition border border-slate-600/50">
                   <ShieldCheck className="w-6 h-6 text-indigo-400" />
@@ -369,9 +386,8 @@ export default function SchoolfessApp() {
             </div>
           )}
 
-          {/* TAMPILAN 1.B: FORM LOGIN SISWA (KHUSUS SISWA) */}
           {selectedPortal === 'siswa' && (
-            <div className="space-y-4 pt-2">
+            <div className="space-y-4 pt-2 animate-fadeIn">
               <div className="flex items-center justify-between border-b border-slate-700 pb-2">
                 <button
                   onClick={() => { setSelectedPortal(null); setLoginError(''); }}
@@ -419,9 +435,8 @@ export default function SchoolfessApp() {
             </div>
           )}
 
-          {/* TAMPILAN 1.C: FORM LOGIN ADMIN (KHUSUS ADMIN) */}
           {selectedPortal === 'admin' && (
-            <div className="space-y-4 pt-2">
+            <div className="space-y-4 pt-2 animate-fadeIn">
               <div className="flex items-center justify-between border-b border-slate-700 pb-2">
                 <button
                   onClick={() => { setSelectedPortal(null); setLoginError(''); }}
@@ -483,7 +498,6 @@ export default function SchoolfessApp() {
             </div>
           )}
 
-          {/* Quick Demo Info */}
           <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50 text-[11px] text-slate-400 space-y-1">
             <p className="font-semibold text-slate-300">💡 Akses Uji Coba (Demo):</p>
             <p>• <b>Login Admin:</b> User: <code className="text-indigo-300">admin</code> | Pass: <code className="text-indigo-300">admin123</code></p>
@@ -495,13 +509,13 @@ export default function SchoolfessApp() {
   }
 
   // ==========================================
-  // APP VIEW 2: HALAMAN UTAMA (SETELAH LOGIN)
+  // APP VIEW 2: MAIN DASHBOARD
   // ==========================================
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12">
       
       {/* Navbar Header */}
-      <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-50 shadow-md">
+      <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-40 shadow-md">
         <div className="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
           
           <div className="flex items-center gap-3">
@@ -519,7 +533,6 @@ export default function SchoolfessApp() {
             </div>
           </div>
           
-          {/* Nav Buttons */}
           <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
             <nav className="flex bg-slate-900 p-1 rounded-xl border border-slate-700 gap-1">
               <button 
@@ -563,7 +576,7 @@ export default function SchoolfessApp() {
         
         {/* TAB 1: FEED MENFESS */}
         {activeTab === 'feed' && (
-          <div className="space-y-4">
+          <div className="space-y-4 animate-fadeIn">
             
             {/* Search & Filter Bar */}
             <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex flex-col gap-3 shadow-sm">
@@ -623,7 +636,7 @@ export default function SchoolfessApp() {
 
                         {currentUser.role === 'admin' && (
                           <button
-                            onClick={() => handleDeleteMenfess(item.id)}
+                            onClick={() => triggerConfirmModal('Hapus Menfess', 'Yakin ingin menghapus menfess ini secara permanen?', 'DELETE_MENFESS', item.id)}
                             title="Hapus Menfess (Admin)"
                             className="text-slate-500 hover:text-rose-400 p-1 transition"
                           >
@@ -649,7 +662,7 @@ export default function SchoolfessApp() {
                     {/* Section Komentar */}
                     <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-2">
                       {(item.comments || []).map((comm, idx) => (
-                        <div key={comm.id || idx} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs">
+                        <div key={comm.id || idx} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs animate-fadeIn">
                           <span className="font-semibold text-indigo-300">{comm.author}: </span>
                           <span className="text-slate-300">{comm.text}</span>
                         </div>
@@ -666,7 +679,7 @@ export default function SchoolfessApp() {
                         />
                         <button 
                           onClick={() => handleAddComment(item)}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition"
+                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow"
                         >
                           Kirim
                         </button>
@@ -680,9 +693,9 @@ export default function SchoolfessApp() {
           </div>
         )}
 
-        {/* TAB 2: KIRIM MENFESS */}
+        {/* TAB 2: KIRIM MENFESS (PENERIMA OPSIONAL) */}
         {activeTab === 'post' && (
-          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-md">
+          <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-md animate-fadeIn">
             <h2 className="text-lg font-bold text-slate-100 mb-1">Kirim Menfess Baru</h2>
             <p className="text-xs text-slate-400 mb-6">Pesanmu bakal tampil di feed secara publik. Jaga kesopanan ya!</p>
 
@@ -699,13 +712,12 @@ export default function SchoolfessApp() {
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Untuk Penerima *</label>
+                  <label className="block text-xs font-medium text-slate-300 mb-1">Untuk Penerima <span className="text-slate-500 font-normal">(Opsional)</span></label>
                   <input 
                     type="text" 
-                    placeholder="Contoh: @Anak_Paskibra / Siti IPS 2"
+                    placeholder="Bebas / Kosongkan untuk umum"
                     value={recipient}
                     onChange={(e) => setRecipient(e.target.value)}
-                    required
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-indigo-500"
                   />
                 </div>
@@ -748,16 +760,15 @@ export default function SchoolfessApp() {
           </div>
         )}
 
-        {/* TAB 3: DASHBOARD DATABASE SISWA (KHUSUS ADMIN) */}
+        {/* TAB 3: DASHBOARD DATABASE SISWA (ADMIN CRUD) */}
         {activeTab === 'database' && currentUser.role === 'admin' && (
-          <div className="space-y-6">
+          <div className="space-y-6 animate-fadeIn">
             
-            {/* Form Tambah Siswa */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
               <h3 className="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
                 <UserPlus className="w-4 h-4 text-indigo-400" /> Tambah Data Siswa Baru (Supabase CRUD)
               </h3>
-              <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+              <form onSubmit={handleAddStudentSubmit} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input 
                   type="text"
                   placeholder="Nomor NISN"
@@ -792,7 +803,6 @@ export default function SchoolfessApp() {
               </form>
             </div>
 
-            {/* List Tabel Data Siswa */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
                 <div>
@@ -836,18 +846,15 @@ export default function SchoolfessApp() {
                           <td className="py-3 px-4 text-slate-300">{s.class}</td>
                           <td className="py-3 px-4 text-center">
                             <div className="flex items-center justify-center gap-2">
-                              {/* Opsi Edit Siswa */}
                               <button
-                                onClick={() => handleOpenEditModal(s)}
+                                onClick={() => { setEditingStudent(s); setEditName(s.name); setEditClass(s.class || 'X'); }}
                                 className="text-slate-400 hover:text-indigo-400 transition p-1"
                                 title="Edit Data Siswa"
                               >
                                 <Edit3 className="w-4 h-4" />
                               </button>
-
-                              {/* Opsi Hapus Siswa */}
                               <button
-                                onClick={() => handleDeleteStudent(s.nisn)}
+                                onClick={() => triggerConfirmModal('Hapus Siswa', `Hapus data siswa ${s.name} (${s.nisn}) dari sistem?`, 'DELETE_STUDENT', s.nisn)}
                                 className="text-slate-400 hover:text-rose-400 transition p-1"
                                 title="Hapus Data Siswa"
                               >
@@ -868,10 +875,12 @@ export default function SchoolfessApp() {
 
       </main>
 
-      {/* MODAL EDIT DATA SISWA */}
+      {/* ========================================== */}
+      {/* MODAL 1: EDIT DATA SISWA */}
+      {/* ========================================== */}
       {editingStudent && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 transform transition-all animate-scaleUp">
             <div className="flex justify-between items-center border-b border-slate-700 pb-3">
               <h3 className="font-bold text-slate-100 flex items-center gap-2 text-sm">
                 <Edit3 className="w-4 h-4 text-indigo-400" /> Edit Data Siswa
@@ -884,7 +893,7 @@ export default function SchoolfessApp() {
               </button>
             </div>
 
-            <form onSubmit={handleUpdateStudent} className="space-y-4">
+            <form onSubmit={handleUpdateStudentSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold text-slate-400 mb-1">NISN (Primary Key)</label>
                 <input 
@@ -935,6 +944,41 @@ export default function SchoolfessApp() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================== */}
+      {/* MODAL 2: KONFIRMASI INTERAKTIF ADMIN (ANIMATED) */}
+      {/* ========================================== */}
+      {confirmModal.isOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center transform transition-all animate-scaleUp">
+            <div className="w-12 h-12 bg-amber-500/20 text-amber-400 rounded-2xl flex items-center justify-center mx-auto border border-amber-500/30">
+              <AlertTriangle className="w-6 h-6 animate-bounce" />
+            </div>
+
+            <div className="space-y-1">
+              <h3 className="font-bold text-slate-100 text-base">{confirmModal.title}</h3>
+              <p className="text-xs text-slate-300 leading-relaxed">{confirmModal.message}</p>
+            </div>
+
+            <div className="flex gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setConfirmModal({ isOpen: false, title: '', message: '', actionType: null, payload: null })}
+                className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2.5 rounded-xl text-xs transition"
+              >
+                Batal
+              </button>
+              <button
+                type="button"
+                onClick={executeConfirmedAction}
+                className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-xs transition shadow-lg flex items-center justify-center gap-1"
+              >
+                <Check className="w-4 h-4" /> Ya, Lanjutkan
+              </button>
+            </div>
           </div>
         </div>
       )}
