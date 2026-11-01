@@ -284,8 +284,8 @@ export default function SchoolfessApp() {
         <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
           
           <div className="text-center space-y-2">
-            <div className="inline-flex bg-indigo-600 text-white p-3 rounded-2xl font-bold text-2xl shadow-lg mb-1">
-              YP17
+            <div className="inline-flex p-2 rounded-[1.75rem] shadow-lg mb-1 bg-transparent">
+              <img src="/logo.png" alt="Logo YP17" className="h-16 w-auto object-contain rounded-[1.25rem]" />
             </div>
             <h1 className="text-2xl font-extrabold text-white">Schoolfess SMA YP17</h1>
             <p className="text-xs text-slate-400">Silakan login untuk mengakses platform aspirasi sekolah</p>
@@ -394,7 +394,9 @@ export default function SchoolfessApp() {
         <div className="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
           
           <div className="flex items-center gap-3">
-            <div className="bg-indigo-600 text-white p-2 rounded-xl font-bold text-lg">YP17</div>
+            <div className="p-1 rounded-2xl flex items-center justify-center shadow-md bg-transparent">
+              <img src="/logo.png" alt="Logo YP17" className="h-10 w-auto object-contain rounded-xl" />
+            </div>
             <div>
               <h1 className="font-bold text-lg text-indigo-400">Schoolfess SMA YP17</h1>
               <div className="flex items-center gap-2 text-xs text-slate-400">
