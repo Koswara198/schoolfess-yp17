@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   MessageCircle, Heart, Send, Search, Users, Database, 
-  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle, Edit3, X, Check, ArrowLeft, GraduationCap, AlertTriangle 
+  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle, Edit3, X, Check, ArrowLeft, GraduationCap, AlertTriangle, CheckCircle2 
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -31,6 +31,9 @@ export default function SchoolfessApp() {
   const [category, setCategory] = useState('#Crush');
   const [text, setText] = useState('');
 
+  // Notifikasi Toast Sukses Kirim Menfess
+  const [toastMessage, setToastMessage] = useState('');
+
   // Form Tambah Siswa (Admin)
   const [newNisn, setNewNisn] = useState('');
   const [newName, setNewName] = useState('');
@@ -41,7 +44,7 @@ export default function SchoolfessApp() {
   const [editName, setEditName] = useState('');
   const [editClass, setEditClass] = useState('X');
 
-  // Modal Konfirmasi Interaktif (Untuk setiap aksi admin)
+  // Modal Konfirmasi Interaktif (Admin)
   const [confirmModal, setConfirmModal] = useState({
     isOpen: false,
     title: '',
@@ -167,7 +170,7 @@ export default function SchoolfessApp() {
     setLoginError('');
   };
 
-  // Handler Kirim Menfess (Penerima Opsional)
+  // Handler Kirim Menfess (Dengan Notifikasi Toast & Auto-Redirect ke Feed)
   const handleSendMenfess = async (e) => {
     e.preventDefault();
     if (!text.trim()) {
@@ -192,7 +195,14 @@ export default function SchoolfessApp() {
       setText('');
       setRecipient('');
       setSender('');
+      
+      // Munculkan Toast Sukses & Pindah ke Feed
+      setToastMessage('Menfess berhasil terkirim!');
       setActiveTab('feed');
+
+      setTimeout(() => {
+        setToastMessage('');
+      }, 4000);
     }
   };
 
@@ -226,7 +236,6 @@ export default function SchoolfessApp() {
       alert('Gagal menambah komentar: ' + error.message);
     } else {
       setCommentInputs({ ...commentInputs, [item.id]: '' });
-      // Update local state instantly for seamless AJAX feel
       setMenfessList(menfessList.map(m => m.id === item.id ? { ...m, comments: updatedComments } : m));
     }
   };
@@ -284,7 +293,6 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Submit Add Student Form
   const handleAddStudentSubmit = (e) => {
     e.preventDefault();
     if (!newNisn.trim() || !newName.trim()) {
@@ -299,7 +307,6 @@ export default function SchoolfessApp() {
     );
   };
 
-  // Submit Update Student Form
   const handleUpdateStudentSubmit = (e) => {
     e.preventDefault();
     if (!editName.trim()) {
@@ -314,7 +321,6 @@ export default function SchoolfessApp() {
     );
   };
 
-  // Format Waktu
   const formatTimestamp = (dateStr) => {
     if (!dateStr) return 'Baru saja';
     const date = new Date(dateStr);
@@ -512,8 +518,16 @@ export default function SchoolfessApp() {
   // APP VIEW 2: MAIN DASHBOARD
   // ==========================================
   return (
-    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12">
+    <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12 relative">
       
+      {/* TOAST NOTIFIKASI MELAYANG (MENFESS TERKIRIM) */}
+      {toastMessage && (
+        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-500 flex items-center gap-2.5 text-xs font-bold animate-bounce">
+          <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
+          <span>{toastMessage}</span>
+        </div>
+      )}
+
       {/* Navbar Header */}
       <header className="bg-slate-800 border-b border-slate-700 sticky top-0 z-40 shadow-md">
         <div className="max-w-4xl mx-auto px-4 py-3 flex flex-col sm:flex-row justify-between items-center gap-3">
@@ -578,7 +592,6 @@ export default function SchoolfessApp() {
         {activeTab === 'feed' && (
           <div className="space-y-4 animate-fadeIn">
             
-            {/* Search & Filter Bar */}
             <div className="bg-slate-800 p-4 rounded-2xl border border-slate-700 flex flex-col gap-3 shadow-sm">
               <div className="relative">
                 <Search className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
@@ -604,7 +617,6 @@ export default function SchoolfessApp() {
               </div>
             </div>
 
-            {/* List Menfess */}
             <div className="space-y-4">
               {loading ? (
                 <div className="text-center py-12 bg-slate-800/50 rounded-2xl border border-slate-700">
@@ -668,7 +680,6 @@ export default function SchoolfessApp() {
                         </div>
                       ))}
 
-                      {/* Input Balasan Komentar */}
                       <div className="flex gap-2 pt-1">
                         <input 
                           type="text"
@@ -693,7 +704,7 @@ export default function SchoolfessApp() {
           </div>
         )}
 
-        {/* TAB 2: KIRIM MENFESS (PENERIMA OPSIONAL) */}
+        {/* TAB 2: KIRIM MENFESS (PENERIMA OPSIONAL + AJAX REDIRECT TOAST) */}
         {activeTab === 'post' && (
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-md animate-fadeIn">
             <h2 className="text-lg font-bold text-slate-100 mb-1">Kirim Menfess Baru</h2>
@@ -875,9 +886,7 @@ export default function SchoolfessApp() {
 
       </main>
 
-      {/* ========================================== */}
-      {/* MODAL 1: EDIT DATA SISWA */}
-      {/* ========================================== */}
+      {/* MODAL EDIT DATA SISWA */}
       {editingStudent && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4 transform transition-all animate-scaleUp">
@@ -948,9 +957,7 @@ export default function SchoolfessApp() {
         </div>
       )}
 
-      {/* ========================================== */}
-      {/* MODAL 2: KONFIRMASI INTERAKTIF ADMIN (ANIMATED) */}
-      {/* ========================================== */}
+      {/* MODAL KONFIRMASI INTERAKTIF ADMIN (ANIMATED) */}
       {confirmModal.isOpen && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn">
           <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-sm w-full shadow-2xl space-y-4 text-center transform transition-all animate-scaleUp">
