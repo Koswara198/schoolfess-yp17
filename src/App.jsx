@@ -31,8 +31,8 @@ export default function SchoolfessApp() {
   const [category, setCategory] = useState('#Crush');
   const [text, setText] = useState('');
 
-  // Notifikasi Toast Sukses Kirim Menfess
-  const [toastMessage, setToastMessage] = useState('');
+  // Toast State ala React Bits (support tipe: 'success', 'error', 'info')
+  const [toast, setToast] = useState({ show: false, message: '', type: 'success' });
 
   // Form Tambah Siswa (Admin)
   const [newNisn, setNewNisn] = useState('');
@@ -58,6 +58,14 @@ export default function SchoolfessApp() {
   const [searchQuery, setSearchQuery] = useState('');
   const [studentSearch, setStudentSearch] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
+
+  // Helper Trigger Toast Ala React Bits
+  const showToast = (message, type = 'success') => {
+    setToast({ show: true, message, type });
+    setTimeout(() => {
+      setToast((prev) => ({ ...prev, show: false }));
+    }, 3500);
+  };
 
   // Sync Sesi User ke LocalStorage
   useEffect(() => {
@@ -135,12 +143,14 @@ export default function SchoolfessApp() {
       const user = { role: 'siswa', name: foundStudent.name, nisn: foundStudent.nisn, class: foundStudent.class };
       setCurrentUser(user);
       setActiveTab('feed');
+      showToast(`Selamat datang kembali, ${foundStudent.name}! 👋`, 'success');
     } else {
       const { data } = await supabase.from('students').select('*').eq('nisn', inputNisn).maybeSingle();
       if (data) {
         const user = { role: 'siswa', name: data.name, nisn: data.nisn, class: data.class };
         setCurrentUser(user);
         setActiveTab('feed');
+        showToast(`Selamat datang kembali, ${data.name}! 👋`, 'success');
       } else {
         setLoginError('NISN tidak terdaftar di database SMA YP17! Hubungi Admin.');
       }
@@ -153,9 +163,10 @@ export default function SchoolfessApp() {
     setLoginError('');
 
     if (loginIdentifier.trim() === 'admin' && loginPassword === 'admin123') {
-      const user = { role: 'admin', name: 'Administrator YP17' };
+      const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
       setCurrentUser(user);
       setActiveTab('database');
+      showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
     } else {
       setLoginError('Username atau Password Admin salah! (Default: admin / admin123)');
     }
@@ -168,13 +179,14 @@ export default function SchoolfessApp() {
     setLoginIdentifier('');
     setLoginPassword('');
     setLoginError('');
+    showToast('Berhasil keluar dari sesi.', 'info');
   };
 
-  // Handler Kirim Menfess (Dengan Notifikasi Toast & Auto-Redirect ke Feed)
+  // Handler Kirim Menfess (Full AJAX + Instant Local Update + React Bits Toast)
   const handleSendMenfess = async (e) => {
     e.preventDefault();
     if (!text.trim()) {
-      alert('Isi pesan menfess wajib diisi!');
+      showToast('Isi pesan menfess wajib diisi!', 'error');
       return;
     }
 
@@ -184,34 +196,55 @@ export default function SchoolfessApp() {
       category,
       text: text.trim(),
       likes: 0,
+      liked_by: [],
       comments: []
     };
 
-    const { error } = await supabase.from('menfess').insert([newPost]);
+    const { data, error } = await supabase.from('menfess').insert([newPost]).select('*');
 
     if (error) {
-      alert('Gagal mengirim menfess: ' + error.message);
+      showToast('Gagal mengirim menfess: ' + error.message, 'error');
     } else {
+      if (data && data.length > 0) {
+        setMenfessList((prevList) => [data[0], ...prevList]);
+      }
+
       setText('');
       setRecipient('');
       setSender('');
       
-      // Munculkan Toast Sukses & Pindah ke Feed
-      setToastMessage('Menfess berhasil terkirim!');
+      showToast('✨ Menfess berhasil dikirim ke feed!', 'success');
       setActiveTab('feed');
-
-      setTimeout(() => {
-        setToastMessage('');
-      }, 4000);
     }
   };
 
-  // Handler Like
-  const handleLike = async (id, currentLikes) => {
-    await supabase
+  // Handler Like (1 Akun Hanya Bisa Like 1 Kali)
+  const handleLike = async (item) => {
+    const userIdentifier = currentUser?.nisn || currentUser?.name;
+    if (!userIdentifier) return;
+
+    const currentLikedBy = item.liked_by || [];
+
+    if (currentLikedBy.includes(userIdentifier)) {
+      showToast('Kamu sudah menyukai menfess ini!', 'info');
+      return;
+    }
+
+    const updatedLikedBy = [...currentLikedBy, userIdentifier];
+    const newLikesCount = (item.likes || 0) + 1;
+
+    const { error } = await supabase
       .from('menfess')
-      .update({ likes: (currentLikes || 0) + 1 })
-      .eq('id', id);
+      .update({ 
+        likes: newLikesCount,
+        liked_by: updatedLikedBy 
+      })
+      .eq('id', item.id);
+
+    if (!error) {
+      setMenfessList(menfessList.map(m => m.id === item.id ? { ...m, likes: newLikesCount, liked_by: updatedLikedBy } : m));
+      showToast('❤️ Menfess disukai!', 'success');
+    }
   };
 
   // Handler Komentar (Instant AJAX Update)
@@ -233,10 +266,11 @@ export default function SchoolfessApp() {
       .eq('id', item.id);
 
     if (error) {
-      alert('Gagal menambah komentar: ' + error.message);
+      showToast('Gagal menambah komentar: ' + error.message, 'error');
     } else {
       setCommentInputs({ ...commentInputs, [item.id]: '' });
       setMenfessList(menfessList.map(m => m.id === item.id ? { ...m, comments: updatedComments } : m));
+      showToast('💬 Komentar terkirim!', 'success');
     }
   };
 
@@ -258,11 +292,12 @@ export default function SchoolfessApp() {
     if (actionType === 'ADD_STUDENT') {
       const { error } = await supabase.from('students').insert([payload]);
       if (error) {
-        alert('Gagal menambah siswa: ' + error.message);
+        showToast('Gagal menambah siswa: ' + error.message, 'error');
       } else {
         setNewNisn('');
         setNewName('');
         fetchStudents();
+        showToast('Data siswa berhasil ditambahkan!', 'success');
       }
     } else if (actionType === 'UPDATE_STUDENT') {
       const { nisn, name, class: kelas } = payload;
@@ -271,24 +306,27 @@ export default function SchoolfessApp() {
         .update({ name, class: kelas })
         .eq('nisn', nisn);
       if (error) {
-        alert('Gagal mengedit siswa: ' + error.message);
+        showToast('Gagal mengedit siswa: ' + error.message, 'error');
       } else {
         setEditingStudent(null);
         fetchStudents();
+        showToast('Data siswa berhasil diperbarui!', 'success');
       }
     } else if (actionType === 'DELETE_STUDENT') {
       const { error } = await supabase.from('students').delete().eq('nisn', payload);
       if (error) {
-        alert('Gagal menghapus siswa: ' + error.message);
+        showToast('Gagal menghapus siswa: ' + error.message, 'error');
       } else {
         fetchStudents();
+        showToast('Data siswa berhasil dihapus.', 'info');
       }
     } else if (actionType === 'DELETE_MENFESS') {
       const { error } = await supabase.from('menfess').delete().eq('id', payload);
       if (error) {
-        alert('Gagal menghapus menfess: ' + error.message);
+        showToast('Gagal menghapus menfess: ' + error.message, 'error');
       } else {
         setMenfessList(menfessList.filter(m => m.id !== payload));
+        showToast('Menfess berhasil dihapus oleh admin.', 'info');
       }
     }
   };
@@ -296,7 +334,7 @@ export default function SchoolfessApp() {
   const handleAddStudentSubmit = (e) => {
     e.preventDefault();
     if (!newNisn.trim() || !newName.trim()) {
-      alert('NISN dan Nama lengkap wajib diisi!');
+      showToast('NISN dan Nama lengkap wajib diisi!', 'error');
       return;
     }
     triggerConfirmModal(
@@ -310,7 +348,7 @@ export default function SchoolfessApp() {
   const handleUpdateStudentSubmit = (e) => {
     e.preventDefault();
     if (!editName.trim()) {
-      alert('Nama siswa tidak boleh kosong!');
+      showToast('Nama siswa tidak boleh kosong!', 'error');
       return;
     }
     triggerConfirmModal(
@@ -347,7 +385,26 @@ export default function SchoolfessApp() {
   // ==========================================
   if (!currentUser) {
     return (
-      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans">
+      <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans relative">
+        
+        {/* REACT BITS STYLE SWIPEABLE TOAST NOTIFICATION */}
+        {toast.show && (
+          <div className="fixed top-6 right-6 z-50 transition-all duration-300 transform translate-y-0 opacity-100 animate-slideDown">
+            <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border backdrop-blur-md text-xs font-medium cursor-pointer ${
+              toast.type === 'error' ? 'bg-rose-950/80 border-rose-800 text-rose-200' :
+              toast.type === 'info' ? 'bg-slate-800/90 border-slate-700 text-slate-200' :
+              'bg-slate-900/90 border-indigo-500/40 text-indigo-200 shadow-indigo-500/10'
+            }`} onClick={() => setToast(prev => ({ ...prev, show: false }))}>
+              <div className={`w-2 h-2 rounded-full animate-pulse ${
+                toast.type === 'error' ? 'bg-rose-500' :
+                toast.type === 'info' ? 'bg-slate-400' : 'bg-indigo-400'
+              }`} />
+              <span>{toast.message}</span>
+              <span className="text-[10px] text-slate-400 ml-2 border-l border-slate-700 pl-2">Geser/Tutup</span>
+            </div>
+          </div>
+        )}
+
         <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 relative overflow-hidden animate-fadeIn">
           
           <div className="text-center space-y-2">
@@ -520,11 +577,21 @@ export default function SchoolfessApp() {
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12 relative">
       
-      {/* TOAST NOTIFIKASI MELAYANG (MENFESS TERKIRIM) */}
-      {toastMessage && (
-        <div className="fixed bottom-6 right-6 z-50 bg-emerald-600 text-white px-4 py-3 rounded-2xl shadow-2xl border border-emerald-500 flex items-center gap-2.5 text-xs font-bold animate-bounce">
-          <CheckCircle2 className="w-5 h-5 text-white shrink-0" />
-          <span>{toastMessage}</span>
+      {/* REACT BITS STYLE SWIPEABLE TOAST NOTIFICATION (DI DASHBOARD UTAMA) */}
+      {toast.show && (
+        <div className="fixed top-6 right-6 z-50 transition-all duration-300 transform translate-y-0 opacity-100 animate-slideDown">
+          <div className={`flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl border backdrop-blur-md text-xs font-medium cursor-pointer ${
+            toast.type === 'error' ? 'bg-rose-950/80 border-rose-800 text-rose-200' :
+            toast.type === 'info' ? 'bg-slate-800/90 border-slate-700 text-slate-200' :
+            'bg-slate-900/90 border-indigo-500/40 text-indigo-200 shadow-indigo-500/10'
+          }`} onClick={() => setToast(prev => ({ ...prev, show: false }))}>
+            <div className={`w-2 h-2 rounded-full animate-pulse ${
+              toast.type === 'error' ? 'bg-rose-500' :
+              toast.type === 'info' ? 'bg-slate-400' : 'bg-indigo-400'
+            }`} />
+            <span>{toast.message}</span>
+            <span className="text-[10px] text-slate-400 ml-2 border-l border-slate-700 pl-2">Klik untuk tutup</span>
+          </div>
         </div>
       )}
 
@@ -627,84 +694,89 @@ export default function SchoolfessApp() {
                   <p className="text-slate-400 text-sm">Belum ada menfess ditemukan di Supabase.</p>
                 </div>
               ) : (
-                filteredMenfess.map((item) => (
-                  <div key={item.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md space-y-3 relative">
-                    
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
-                          {(item.sender || 'A').charAt(0).toUpperCase()}
+                filteredMenfess.map((item) => {
+                  const hasLiked = (item.liked_by || []).includes(currentUser?.nisn || currentUser?.name);
+
+                  return (
+                    <div key={item.id} className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md space-y-3 relative">
+                      
+                      <div className="flex justify-between items-start">
+                        <div className="flex items-center gap-2">
+                          <div className="w-8 h-8 rounded-full bg-indigo-600/30 text-indigo-400 flex items-center justify-center font-bold text-xs border border-indigo-500/30">
+                            {(item.sender || 'A').charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <h3 className="text-sm font-semibold text-slate-200">{item.sender}</h3>
+                            <p className="text-xs text-indigo-400">Ke: @{item.recipient}</p>
+                          </div>
                         </div>
-                        <div>
-                          <h3 className="text-sm font-semibold text-slate-200">{item.sender}</h3>
-                          <p className="text-xs text-indigo-400">Ke: @{item.recipient}</p>
+
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800/50 font-medium">
+                            {item.category}
+                          </span>
+
+                          {currentUser.role === 'admin' && (
+                            <button
+                              onClick={() => triggerConfirmModal('Hapus Menfess', 'Yakin ingin menghapus menfess ini secara permanen?', 'DELETE_MENFESS', item.id)}
+                              title="Hapus Menfess (Admin)"
+                              className="text-slate-500 hover:text-rose-400 p-1 transition"
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </button>
+                          )}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs px-2.5 py-1 rounded-full bg-indigo-950 text-indigo-300 border border-indigo-800/50 font-medium">
-                          {item.category}
-                        </span>
+                      <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{item.text}</p>
 
-                        {currentUser.role === 'admin' && (
-                          <button
-                            onClick={() => triggerConfirmModal('Hapus Menfess', 'Yakin ingin menghapus menfess ini secara permanen?', 'DELETE_MENFESS', item.id)}
-                            title="Hapus Menfess (Admin)"
-                            className="text-slate-500 hover:text-rose-400 p-1 transition"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        )}
-                      </div>
-                    </div>
-
-                    <p className="text-slate-200 text-sm leading-relaxed whitespace-pre-wrap">{item.text}</p>
-
-                    <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs text-slate-400">
-                      <span>{formatTimestamp(item.created_at)}</span>
-                      <button 
-                        onClick={() => handleLike(item.id, item.likes)}
-                        className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-700 text-rose-400 transition border border-slate-700"
-                      >
-                        <Heart className="w-4 h-4 fill-rose-500 text-rose-500" />
-                        <span className="font-semibold">{item.likes || 0}</span>
-                      </button>
-                    </div>
-
-                    {/* Section Komentar */}
-                    <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-2">
-                      {(item.comments || []).map((comm, idx) => (
-                        <div key={comm.id || idx} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs animate-fadeIn">
-                          <span className="font-semibold text-indigo-300">{comm.author}: </span>
-                          <span className="text-slate-300">{comm.text}</span>
-                        </div>
-                      ))}
-
-                      <div className="flex gap-2 pt-1">
-                        <input 
-                          type="text"
-                          placeholder="Tulis balasan..."
-                          value={commentInputs[item.id] || ''}
-                          onChange={(e) => setCommentInputs({ ...commentInputs, [item.id]: e.target.value })}
-                          className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
-                        />
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-700/60 text-xs text-slate-400">
+                        <span>{formatTimestamp(item.created_at)}</span>
                         <button 
-                          onClick={() => handleAddComment(item)}
-                          className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow"
+                          onClick={() => handleLike(item)}
+                          className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg transition border ${hasLiked ? 'bg-rose-950/50 border-rose-800/80 text-rose-300' : 'bg-slate-900 hover:bg-slate-700 text-rose-400 border-slate-700'}`}
+                          title={hasLiked ? 'Kamu sudah menyukai ini' : 'Sukai menfess ini'}
                         >
-                          Kirim
+                          <Heart className={`w-4 h-4 ${hasLiked ? 'fill-rose-500 text-rose-500' : 'text-rose-500'}`} />
+                          <span className="font-semibold">{item.likes || 0}</span>
                         </button>
                       </div>
-                    </div>
 
-                  </div>
-                ))
+                      {/* Section Komentar */}
+                      <div className="mt-3 pt-3 border-t border-slate-700/40 space-y-2">
+                        {(item.comments || []).map((comm, idx) => (
+                          <div key={comm.id || idx} className="bg-slate-900/60 p-2.5 rounded-xl border border-slate-700/50 text-xs animate-fadeIn">
+                            <span className="font-semibold text-indigo-300">{comm.author}: </span>
+                            <span className="text-slate-300">{comm.text}</span>
+                          </div>
+                        ))}
+
+                        <div className="flex gap-2 pt-1">
+                          <input 
+                            type="text"
+                            placeholder="Tulis balasan..."
+                            value={commentInputs[item.id] || ''}
+                            onChange={(e) => setCommentInputs({ ...commentInputs, [item.id]: e.target.value })}
+                            className="flex-1 bg-slate-900 border border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
+                          />
+                          <button 
+                            onClick={() => handleAddComment(item)}
+                            className="bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-1.5 rounded-xl text-xs font-semibold transition shadow"
+                          >
+                            Kirim
+                          </button>
+                        </div>
+                      </div>
+
+                    </div>
+                  );
+                })
               )}
             </div>
           </div>
         )}
 
-        {/* TAB 2: KIRIM MENFESS (PENERIMA OPSIONAL + AJAX REDIRECT TOAST) */}
+        {/* TAB 2: KIRIM MENFESS */}
         {activeTab === 'post' && (
           <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 shadow-md animate-fadeIn">
             <h2 className="text-lg font-bold text-slate-100 mb-1">Kirim Menfess Baru</h2>
