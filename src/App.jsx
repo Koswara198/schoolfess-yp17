@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   MessageCircle, Heart, Send, Search, Users, Database, 
-  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle 
+  ShieldCheck, UserPlus, Trash2, LogOut, Lock, User, Key, AlertCircle, Edit3, X, Check, ArrowLeft, GraduationCap
 } from 'lucide-react';
 import { supabase } from './supabaseClient';
 
@@ -14,8 +14,8 @@ export default function SchoolfessApp() {
 
   const [activeTab, setActiveTab] = useState('feed');
 
-  // Form Login State
-  const [loginRole, setLoginRole] = useState('siswa'); // 'siswa' atau 'admin'
+  // Form Login State (Pilihan Portal: null = Belum Pilih, 'siswa' = Portal Siswa, 'admin' = Portal Admin)
+  const [selectedPortal, setSelectedPortal] = useState(null);
   const [loginIdentifier, setLoginIdentifier] = useState(''); // NISN / Username
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState('');
@@ -34,7 +34,12 @@ export default function SchoolfessApp() {
   // Form Tambah Siswa (Admin)
   const [newNisn, setNewNisn] = useState('');
   const [newName, setNewName] = useState('');
-  const [newClass, setNewClass] = useState('X IPA 1');
+  const [newClass, setNewClass] = useState('X');
+
+  // Modal Edit Siswa State (Admin)
+  const [editingStudent, setEditingStudent] = useState(null);
+  const [editName, setEditName] = useState('');
+  const [editClass, setEditClass] = useState('X');
 
   // Search & Filter
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -42,7 +47,7 @@ export default function SchoolfessApp() {
   const [studentSearch, setStudentSearch] = useState('');
   const [commentInputs, setCommentInputs] = useState({});
 
-  // Sync Sesi User ke LocalStorage (Untuk tetap login saat refresh)
+  // Sync Sesi User ke LocalStorage
   useEffect(() => {
     if (currentUser) {
       localStorage.setItem('yp17_session', JSON.stringify(currentUser));
@@ -51,12 +56,11 @@ export default function SchoolfessApp() {
     }
   }, [currentUser]);
 
-  // 1. FETCH DATA DARI SUPABASE & INITIALIZE REAL-TIME SUBSCRIPTION
+  // FETCH DATA DARI SUPABASE & INITIALIZE REAL-TIME SUBSCRIPTION
   useEffect(() => {
     fetchMenfess();
     fetchStudents();
 
-    // Setup Real-time listener untuk tabel 'menfess'
     const menfessChannel = supabase
       .channel('public:menfess')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'menfess' }, () => {
@@ -64,7 +68,6 @@ export default function SchoolfessApp() {
       })
       .subscribe();
 
-    // Setup Real-time listener untuk tabel 'students'
     const studentChannel = supabase
       .channel('public:students')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'students' }, () => {
@@ -78,7 +81,6 @@ export default function SchoolfessApp() {
     };
   }, []);
 
-  // Fungsi Ambil Menfess dari Supabase
   const fetchMenfess = async () => {
     try {
       const { data, error } = await supabase
@@ -95,7 +97,6 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Fungsi Ambil Siswa dari Supabase
   const fetchStudents = async () => {
     try {
       const { data, error } = await supabase
@@ -110,51 +111,54 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Handler Login
-  const handleLogin = async (e) => {
+  // Handler Login Siswa
+  const handleSiswaLogin = async (e) => {
     e.preventDefault();
     setLoginError('');
 
-    if (loginRole === 'admin') {
-      if (loginIdentifier === 'admin' && loginPassword === 'admin123') {
-        const user = { role: 'admin', name: 'Administrator YP17' };
-        setCurrentUser(user);
-        setActiveTab('database');
-      } else {
-        setLoginError('Username atau Password Admin salah! (Default: admin / admin123)');
-      }
+    const inputNisn = loginIdentifier.trim();
+    const foundStudent = students.find(s => String(s.nisn).trim() === inputNisn);
+    
+    if (foundStudent) {
+      const user = { role: 'siswa', name: foundStudent.name, nisn: foundStudent.nisn, class: foundStudent.class };
+      setCurrentUser(user);
+      setActiveTab('feed');
     } else {
-      // Login Siswa via Supabase Database
-      const inputNisn = loginIdentifier.trim();
-      const foundStudent = students.find(s => s.nisn === inputNisn);
-      
-      if (foundStudent) {
-        const user = { role: 'siswa', name: foundStudent.name, nisn: foundStudent.nisn, class: foundStudent.class };
+      const { data } = await supabase.from('students').select('*').eq('nisn', inputNisn).maybeSingle();
+      if (data) {
+        const user = { role: 'siswa', name: data.name, nisn: data.nisn, class: data.class };
         setCurrentUser(user);
         setActiveTab('feed');
       } else {
-        // Coba re-fetch kalau-kalau ada siswa baru terdaftar
-        const { data } = await supabase.from('students').select('*').eq('nisn', inputNisn).single();
-        if (data) {
-          const user = { role: 'siswa', name: data.name, nisn: data.nisn, class: data.class };
-          setCurrentUser(user);
-          setActiveTab('feed');
-        } else {
-          setLoginError('NISN tidak terdaftar di database SMA YP17! Hubungi Admin.');
-        }
+        setLoginError('NISN tidak terdaftar di database SMA YP17! Hubungi Admin.');
       }
+    }
+  };
+
+  // Handler Login Admin
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    setLoginError('');
+
+    if (loginIdentifier.trim() === 'admin' && loginPassword === 'admin123') {
+      const user = { role: 'admin', name: 'Administrator YP17' };
+      setCurrentUser(user);
+      setActiveTab('database');
+    } else {
+      setLoginError('Username atau Password Admin salah! (Default: admin / admin123)');
     }
   };
 
   // Handler Logout
   const handleLogout = () => {
     setCurrentUser(null);
+    setSelectedPortal(null);
     setLoginIdentifier('');
     setLoginPassword('');
     setLoginError('');
   };
 
-  // Handler Kirim Menfess ke Supabase
+  // Handler Kirim Menfess
   const handleSendMenfess = async (e) => {
     e.preventDefault();
     if (!text.trim() || !recipient.trim()) {
@@ -183,7 +187,7 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Handler Like Menfess di Supabase
+  // Handler Like
   const handleLike = async (id, currentLikes) => {
     const { error } = await supabase
       .from('menfess')
@@ -193,7 +197,7 @@ export default function SchoolfessApp() {
     if (error) console.error('Error like:', error.message);
   };
 
-  // Handler Hapus Menfess (Admin)
+  // Handler Hapus Menfess
   const handleDeleteMenfess = async (id) => {
     if (window.confirm('Apakah Anda yakin ingin menghapus menfess ini?')) {
       const { error } = await supabase.from('menfess').delete().eq('id', id);
@@ -201,7 +205,7 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Handler Komentar di Supabase (JSONB array)
+  // Handler Komentar
   const handleAddComment = async (item) => {
     const commentText = commentInputs[item.id];
     if (!commentText || !commentText.trim()) return;
@@ -226,16 +230,16 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Handler Tambah Siswa ke Supabase (Admin)
+  // Handler Tambah Siswa (Admin)
   const handleAddStudent = async (e) => {
     e.preventDefault();
-    if (!newNisn || !newName) {
+    if (!newNisn.trim() || !newName.trim()) {
       alert('NISN dan Nama lengkap wajib diisi!');
       return;
     }
 
     const { error } = await supabase.from('students').insert([
-      { nisn: newNisn.trim(), name: newName.trim(), class: newClass, status: 'Aktif' }
+      { nisn: newNisn.trim(), name: newName.trim(), class: newClass }
     ]);
 
     if (error) {
@@ -243,19 +247,53 @@ export default function SchoolfessApp() {
     } else {
       setNewNisn('');
       setNewName('');
-      alert('Data siswa berhasil ditambahkan ke database cloud!');
+      alert('Data siswa berhasil ditambahkan!');
+      fetchStudents();
     }
   };
 
-  // Handler Hapus Siswa dari Supabase (Admin)
+  // Handler Modal Edit Siswa
+  const handleOpenEditModal = (student) => {
+    setEditingStudent(student);
+    setEditName(student.name);
+    setEditClass(student.class || 'X');
+  };
+
+  // Handler Update Siswa
+  const handleUpdateStudent = async (e) => {
+    e.preventDefault();
+    if (!editName.trim()) {
+      alert('Nama siswa tidak boleh kosong!');
+      return;
+    }
+
+    const { error } = await supabase
+      .from('students')
+      .update({ name: editName.trim(), class: editClass })
+      .eq('nisn', editingStudent.nisn);
+
+    if (error) {
+      alert('Gagal mengedit data siswa: ' + error.message);
+    } else {
+      alert('Data siswa berhasil diperbarui!');
+      setEditingStudent(null);
+      fetchStudents();
+    }
+  };
+
+  // Handler Hapus Siswa
   const handleDeleteStudent = async (nisn) => {
     if (window.confirm(`Hapus data siswa dengan NISN ${nisn}?`)) {
       const { error } = await supabase.from('students').delete().eq('nisn', nisn);
-      if (error) alert('Gagal menghapus siswa: ' + error.message);
+      if (error) {
+        alert('Gagal menghapus siswa: ' + error.message);
+      } else {
+        fetchStudents();
+      }
     }
   };
 
-  // Helper Format Waktu
+  // Format Waktu
   const formatTimestamp = (dateStr) => {
     if (!dateStr) return 'Baru saja';
     const date = new Date(dateStr);
@@ -272,90 +310,161 @@ export default function SchoolfessApp() {
   });
 
   const filteredStudents = students.filter(s => 
-    s.name.toLowerCase().includes(studentSearch.toLowerCase()) ||
-    s.nisn.includes(studentSearch) ||
-    s.class.toLowerCase().includes(studentSearch.toLowerCase())
+    (s.name || '').toLowerCase().includes(studentSearch.toLowerCase()) ||
+    String(s.nisn || '').includes(studentSearch) ||
+    (s.class || '').toLowerCase().includes(studentSearch.toLowerCase())
   );
 
-  // APP VIEW 1: JIKA BELUM LOGIN
+  // ==========================================
+  // APP VIEW 1: JIKA BELUM LOGIN (PORTAL SEPARATED)
+  // ==========================================
   if (!currentUser) {
     return (
       <div className="min-h-screen bg-slate-900 text-slate-100 flex items-center justify-center p-4 font-sans">
-        <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6">
+        <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl space-y-6 relative overflow-hidden">
           
+          {/* Header Portal */}
           <div className="text-center space-y-2">
             <div className="inline-flex p-2 rounded-[1.75rem] shadow-lg mb-1 bg-transparent">
               <img src="/logo.png" alt="Logo YP17" className="h-16 w-auto object-contain rounded-[1.25rem]" />
             </div>
             <h1 className="text-2xl font-extrabold text-white">Schoolfess SMA YP17</h1>
-            <p className="text-xs text-slate-400">Silakan login untuk mengakses platform aspirasi sekolah</p>
+            <p className="text-xs text-slate-400">Platform Aspirasi & Menfess Resmi SMA YP17</p>
           </div>
 
-          <div className="flex bg-slate-900 p-1 rounded-2xl border border-slate-700">
-            <button
-              type="button"
-              onClick={() => { setLoginRole('siswa'); setLoginError(''); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-xl transition ${loginRole === 'siswa' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Portal Siswa
-            </button>
-            <button
-              type="button"
-              onClick={() => { setLoginRole('admin'); setLoginError(''); }}
-              className={`flex-1 py-2 text-xs font-semibold rounded-xl transition ${loginRole === 'admin' ? 'bg-indigo-600 text-white shadow' : 'text-slate-400 hover:text-white'}`}
-            >
-              Portal Admin / Guru
-            </button>
-          </div>
+          {/* TAMPILAN 1.A: PILIH PORTAL LOGIN (BELUM DIKLIK) */}
+          {selectedPortal === null && (
+            <div className="space-y-4 pt-2">
+              <p className="text-xs text-center text-slate-300 font-semibold uppercase tracking-wider">Silakan Pilih Akses Login:</p>
+              
+              {/* Pilihan 1: Portal Siswa */}
+              <button
+                type="button"
+                onClick={() => { setSelectedPortal('siswa'); setLoginError(''); setLoginIdentifier(''); }}
+                className="w-full bg-slate-900 hover:bg-indigo-950/60 border border-slate-700 hover:border-indigo-500/50 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow"
+              >
+                <div className="w-12 h-12 rounded-xl bg-indigo-600/20 group-hover:bg-indigo-600 text-indigo-400 group-hover:text-white flex items-center justify-center transition border border-indigo-500/30">
+                  <GraduationCap className="w-6 h-6" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100 group-hover:text-indigo-300 transition">Portal Siswa</h3>
+                  <p className="text-xs text-slate-400">Masuk menggunakan Nomor NISN terdaftar</p>
+                </div>
+              </button>
 
-          {loginError && (
-            <div className="bg-rose-950/60 border border-rose-800/80 text-rose-300 p-3 rounded-xl text-xs flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
-              <span>{loginError}</span>
+              {/* Pilihan 2: Portal Admin */}
+              <button
+                type="button"
+                onClick={() => { setSelectedPortal('admin'); setLoginError(''); setLoginIdentifier(''); setLoginPassword(''); }}
+                className="w-full bg-slate-900 hover:bg-slate-700/60 border border-slate-700 p-4 rounded-2xl transition group flex items-center gap-4 text-left shadow"
+              >
+                <div className="w-12 h-12 rounded-xl bg-slate-800 group-hover:bg-slate-600 text-slate-300 group-hover:text-white flex items-center justify-center transition border border-slate-600/50">
+                  <ShieldCheck className="w-6 h-6 text-indigo-400" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-slate-100 group-hover:text-indigo-300 transition">Portal Admin / Guru</h3>
+                  <p className="text-xs text-slate-400">Dashboard kelola siswa & moderasi pesan</p>
+                </div>
+              </button>
             </div>
           )}
 
-          <form onSubmit={handleLogin} className="space-y-4">
-            {loginRole === 'siswa' ? (
-              <div>
-                <label className="block text-xs font-medium text-slate-300 mb-1">Masukkan Nomor NISN Siswa</label>
-                <div className="relative">
-                  <User className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
-                  <input
-                    type="text"
-                    placeholder="Contoh: 0071234561"
-                    value={loginIdentifier}
-                    onChange={(e) => setLoginIdentifier(e.target.value)}
-                    required
-                    className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
-                  />
-                </div>
-                <p className="text-[10px] text-slate-500 mt-1">Gunakan NISN yang terdaftar di database cloud.</p>
+          {/* TAMPILAN 1.B: FORM LOGIN SISWA (KHUSUS SISWA) */}
+          {selectedPortal === 'siswa' && (
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                <button
+                  onClick={() => { setSelectedPortal(null); setLoginError(''); }}
+                  className="text-slate-400 hover:text-white text-xs flex items-center gap-1 transition"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Kembali
+                </button>
+                <span className="text-xs font-bold text-indigo-400 flex items-center gap-1">
+                  <GraduationCap className="w-4 h-4" /> Portal Siswa
+                </span>
               </div>
-            ) : (
-              <>
+
+              {loginError && (
+                <div className="bg-rose-950/60 border border-rose-800/80 text-rose-300 p-3 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleSiswaLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Username Admin</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Nomor NISN Siswa</label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                     <input
                       type="text"
-                      placeholder="Username (admin)"
+                      placeholder="Masukkan NISN Siswa..."
                       value={loginIdentifier}
                       onChange={(e) => setLoginIdentifier(e.target.value)}
                       required
+                      autoFocus
+                      className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
+                    />
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-1.5">Gunakan NISN resmi yang sudah terdaftar di sekolah.</p>
+                </div>
+
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2"
+                >
+                  Masuk Portal Siswa
+                </button>
+              </form>
+            </div>
+          )}
+
+          {/* TAMPILAN 1.C: FORM LOGIN ADMIN (KHUSUS ADMIN) */}
+          {selectedPortal === 'admin' && (
+            <div className="space-y-4 pt-2">
+              <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                <button
+                  onClick={() => { setSelectedPortal(null); setLoginError(''); }}
+                  className="text-slate-400 hover:text-white text-xs flex items-center gap-1 transition"
+                >
+                  <ArrowLeft className="w-4 h-4" /> Kembali
+                </button>
+                <span className="text-xs font-bold text-indigo-400 flex items-center gap-1">
+                  <ShieldCheck className="w-4 h-4" /> Portal Admin
+                </span>
+              </div>
+
+              {loginError && (
+                <div className="bg-rose-950/60 border border-rose-800/80 text-rose-300 p-3 rounded-xl text-xs flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>{loginError}</span>
+                </div>
+              )}
+
+              <form onSubmit={handleAdminLogin} className="space-y-4">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Username Admin</label>
+                  <div className="relative">
+                    <User className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
+                    <input
+                      type="text"
+                      placeholder="Username Admin"
+                      value={loginIdentifier}
+                      onChange={(e) => setLoginIdentifier(e.target.value)}
+                      required
+                      autoFocus
                       className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-indigo-500 text-slate-200"
                     />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-300 mb-1">Password Admin</label>
+                  <label className="block text-xs font-semibold text-slate-300 mb-1">Password Admin</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 text-slate-400 w-4 h-4" />
                     <input
                       type="password"
-                      placeholder="Password (admin123)"
+                      placeholder="Password Admin"
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
                       required
@@ -363,20 +472,20 @@ export default function SchoolfessApp() {
                     />
                   </div>
                 </div>
-              </>
-            )}
 
-            <button
-              type="submit"
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-lg mt-2"
-            >
-              {loginRole === 'siswa' ? 'Masuk sebagai Siswa' : 'Masuk Dashboard Admin'}
-            </button>
-          </form>
+                <button
+                  type="submit"
+                  className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2.5 rounded-xl text-sm transition shadow-lg flex items-center justify-center gap-2"
+                >
+                  Masuk Dashboard Admin
+                </button>
+              </form>
+            </div>
+          )}
 
+          {/* Quick Demo Info */}
           <div className="bg-slate-900/60 p-3 rounded-2xl border border-slate-700/50 text-[11px] text-slate-400 space-y-1">
             <p className="font-semibold text-slate-300">💡 Akses Uji Coba (Demo):</p>
-            <p>• <b>NISN Siswa Demo:</b> <code className="text-indigo-300">0071234561</code> (Rizky Pratama)</p>
             <p>• <b>Login Admin:</b> User: <code className="text-indigo-300">admin</code> | Pass: <code className="text-indigo-300">admin123</code></p>
           </div>
 
@@ -385,7 +494,9 @@ export default function SchoolfessApp() {
     );
   }
 
+  // ==========================================
   // APP VIEW 2: HALAMAN UTAMA (SETELAH LOGIN)
+  // ==========================================
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans pb-12">
       
@@ -641,9 +752,10 @@ export default function SchoolfessApp() {
         {activeTab === 'database' && currentUser.role === 'admin' && (
           <div className="space-y-6">
             
+            {/* Form Tambah Siswa */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md">
               <h3 className="text-sm font-bold text-slate-100 mb-3 flex items-center gap-2">
-                <UserPlus className="w-4 h-4 text-indigo-400" /> Daftarkan / Tambah Data Siswa Baru (Supabase)
+                <UserPlus className="w-4 h-4 text-indigo-400" /> Tambah Data Siswa Baru (Supabase CRUD)
               </h3>
               <form onSubmit={handleAddStudent} className="grid grid-cols-1 sm:grid-cols-4 gap-3">
                 <input 
@@ -651,6 +763,7 @@ export default function SchoolfessApp() {
                   placeholder="Nomor NISN"
                   value={newNisn}
                   onChange={(e) => setNewNisn(e.target.value)}
+                  required
                   className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 />
                 <input 
@@ -658,6 +771,7 @@ export default function SchoolfessApp() {
                   placeholder="Nama Lengkap Siswa"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
+                  required
                   className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 />
                 <select 
@@ -665,27 +779,25 @@ export default function SchoolfessApp() {
                   onChange={(e) => setNewClass(e.target.value)}
                   className="bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
                 >
-                  <option value="X IPA 1">X IPA 1</option>
-                  <option value="X IPS 1">X IPS 1</option>
-                  <option value="XI IPA 2">XI IPA 2</option>
-                  <option value="XI IPS 2">XI IPS 2</option>
-                  <option value="XII IPA 1">XII IPA 1</option>
-                  <option value="XII IPS 2">XII IPS 2</option>
+                  <option value="X">Kelas X</option>
+                  <option value="XI">Kelas XI</option>
+                  <option value="XII">Kelas XII</option>
                 </select>
                 <button 
                   type="submit"
-                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold py-2 transition shadow"
+                  className="bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold py-2 transition shadow flex items-center justify-center gap-1"
                 >
-                  Simpan Data
+                  <UserPlus className="w-3.5 h-3.5" /> Simpan Siswa
                 </button>
               </form>
             </div>
 
+            {/* List Tabel Data Siswa */}
             <div className="bg-slate-800 border border-slate-700 rounded-2xl p-5 shadow-md space-y-4">
               <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
                 <div>
                   <h3 className="font-bold text-slate-100 flex items-center gap-2">
-                    <Database className="w-4 h-4 text-indigo-400" /> Direktori Data Siswa SMA YP17 (Supabase)
+                    <Database className="w-4 h-4 text-indigo-400" /> Direktori Data Siswa SMA YP17
                   </h3>
                   <p className="text-xs text-slate-400">Total terdaftar: {students.length} siswa</p>
                 </div>
@@ -693,7 +805,7 @@ export default function SchoolfessApp() {
                   <Search className="absolute left-3 top-2.5 text-slate-400 w-3.5 h-3.5" />
                   <input 
                     type="text"
-                    placeholder="Cari NISN atau Nama..."
+                    placeholder="Cari NISN, Nama, atau Kelas..."
                     value={studentSearch}
                     onChange={(e) => setStudentSearch(e.target.value)}
                     className="w-full bg-slate-900 border border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500"
@@ -708,14 +820,13 @@ export default function SchoolfessApp() {
                       <th className="py-3 px-4">NISN</th>
                       <th className="py-3 px-4">Nama Lengkap</th>
                       <th className="py-3 px-4">Kelas</th>
-                      <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-center">Aksi</th>
+                      <th className="py-3 px-4 text-center">Aksi (CRUD)</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-700/50">
                     {filteredStudents.length === 0 ? (
                       <tr>
-                        <td colSpan="5" className="text-center py-6 text-slate-400">Siswa tidak ditemukan.</td>
+                        <td colSpan="4" className="text-center py-6 text-slate-400">Siswa tidak ditemukan.</td>
                       </tr>
                     ) : (
                       filteredStudents.map((s) => (
@@ -723,19 +834,26 @@ export default function SchoolfessApp() {
                           <td className="py-3 px-4 font-mono text-indigo-300">{s.nisn}</td>
                           <td className="py-3 px-4 font-medium text-slate-200">{s.name}</td>
                           <td className="py-3 px-4 text-slate-300">{s.class}</td>
-                          <td className="py-3 px-4">
-                            <span className="px-2 py-0.5 bg-emerald-950 text-emerald-400 border border-emerald-800/50 rounded-full font-medium">
-                              {s.status || 'Aktif'}
-                            </span>
-                          </td>
                           <td className="py-3 px-4 text-center">
-                            <button
-                              onClick={() => handleDeleteStudent(s.nisn)}
-                              className="text-slate-400 hover:text-rose-400 transition"
-                              title="Hapus Siswa"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
+                            <div className="flex items-center justify-center gap-2">
+                              {/* Opsi Edit Siswa */}
+                              <button
+                                onClick={() => handleOpenEditModal(s)}
+                                className="text-slate-400 hover:text-indigo-400 transition p-1"
+                                title="Edit Data Siswa"
+                              >
+                                <Edit3 className="w-4 h-4" />
+                              </button>
+
+                              {/* Opsi Hapus Siswa */}
+                              <button
+                                onClick={() => handleDeleteStudent(s.nisn)}
+                                className="text-slate-400 hover:text-rose-400 transition p-1"
+                                title="Hapus Data Siswa"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -749,6 +867,78 @@ export default function SchoolfessApp() {
         )}
 
       </main>
+
+      {/* MODAL EDIT DATA SISWA */}
+      {editingStudent && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-3xl p-6 max-w-md w-full shadow-2xl space-y-4">
+            <div className="flex justify-between items-center border-b border-slate-700 pb-3">
+              <h3 className="font-bold text-slate-100 flex items-center gap-2 text-sm">
+                <Edit3 className="w-4 h-4 text-indigo-400" /> Edit Data Siswa
+              </h3>
+              <button 
+                onClick={() => setEditingStudent(null)}
+                className="text-slate-400 hover:text-white transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleUpdateStudent} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-slate-400 mb-1">NISN (Primary Key)</label>
+                <input 
+                  type="text" 
+                  value={editingStudent.nisn} 
+                  disabled 
+                  className="w-full bg-slate-950 border border-slate-800 text-slate-500 rounded-xl px-3 py-2 text-xs font-mono cursor-not-allowed"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Nama Lengkap Siswa</label>
+                <input 
+                  type="text" 
+                  value={editName} 
+                  onChange={(e) => setEditName(e.target.value)}
+                  required 
+                  className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-300 mb-1">Kelas</label>
+                <select 
+                  value={editClass} 
+                  onChange={(e) => setEditClass(e.target.value)}
+                  className="w-full bg-slate-900 border border-slate-700 text-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-indigo-500"
+                >
+                  <option value="X">Kelas X</option>
+                  <option value="XI">Kelas XI</option>
+                  <option value="XII">Kelas XII</option>
+                </select>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setEditingStudent(null)}
+                  className="flex-1 bg-slate-700 hover:bg-slate-600 text-slate-200 font-semibold py-2 rounded-xl text-xs transition"
+                >
+                  Batal
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 bg-indigo-600 hover:bg-indigo-500 text-white font-semibold py-2 rounded-xl text-xs transition flex items-center justify-center gap-1 shadow"
+                >
+                  <Check className="w-4 h-4" /> Simpan Perubahan
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
