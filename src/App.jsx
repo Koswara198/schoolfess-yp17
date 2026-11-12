@@ -26,7 +26,7 @@ export default function SchoolfessApp() {
   const [loading, setLoading] = useState(true);
 
   // Form Menfess State
-  const [sender, setSender] = useState('');
+  const [sender, setSender] = useState('Anonim');
   const [recipient, setRecipient] = useState('');
   const [category, setCategory] = useState('#Crush');
   const [text, setText] = useState('');
@@ -158,19 +158,58 @@ export default function SchoolfessApp() {
   };
 
   // Handler Login Admin
-  const handleAdminLogin = (e) => {
-    e.preventDefault();
-    setLoginError('');
+const handleAdminLogin = (e) => {
+  e.preventDefault();
+  setLoginError('');
 
-    if (loginIdentifier.trim() === 'admin' && loginPassword === 'Smayp1717') {
-      const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
-      setCurrentUser(user);
-      setActiveTab('database');
-      showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
-    } else {
-      setLoginError('Username atau Password Admin salah!');
-    }
-  };
+  const inputUser = loginIdentifier.trim();
+  const inputPass = loginPassword;
+
+  // === CEK ADMIN ===
+  if (
+    inputUser === import.meta.env.VITE_ADMIN_USER &&
+    inputPass === import.meta.env.VITE_ADMIN_PASS
+  ) {
+    const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
+    setCurrentUser(user);
+    setActiveTab('database');
+    showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
+    return;
+  }
+
+  // === CEK GURU ===
+  const teachers = [
+    {
+      user: import.meta.env.VITE_TEACHER_USER_1,
+      pass: import.meta.env.VITE_TEACHER_PASS_1,
+      name: import.meta.env.VITE_TEACHER_NAME_1,
+    },
+    {
+      user: import.meta.env.VITE_TEACHER_USER_2,
+      pass: import.meta.env.VITE_TEACHER_PASS_2,
+      name: import.meta.env.VITE_TEACHER_NAME_2,
+    },
+    {
+      user: import.meta.env.VITE_TEACHER_USER_3,
+      pass: import.meta.env.VITE_TEACHER_PASS_3,
+      name: import.meta.env.VITE_TEACHER_NAME_3,
+    },
+  ];
+
+  const matchedTeacher = teachers.find(
+    (t) => t.user && inputUser === t.user && inputPass === t.pass
+  );
+
+  if (matchedTeacher) {
+    const user = { role: 'guru', name: matchedTeacher.name, nisn: `guru_${matchedTeacher.user}` };
+    setCurrentUser(user);
+    setActiveTab('feed'); // guru langsung ke feed, bukan database
+    showToast(`Berhasil masuk sebagai Guru: ${matchedTeacher.name} 👨‍🏫`, 'success');
+    return;
+  }
+
+  setLoginError('Username atau Password salah!');
+};
 
   // Handler Logout
   const handleLogout = () => {
@@ -183,12 +222,36 @@ export default function SchoolfessApp() {
   };
 
   // Handler Kirim Menfess (Full AJAX + Auto Fetch + React Bits Toast)
-  const handleSendMenfess = async (e) => {
-    e.preventDefault();
-    if (!text.trim()) {
-      showToast('Isi pesan menfess wajib diisi!', 'error');
-      return;
-    }
+const handleSendMenfess = async (e) => {
+  e.preventDefault();
+  if (!text.trim()) {
+    showToast('Isi pesan menfess wajib diisi!', 'error');
+    return;
+  }
+
+  const newPost = {
+    sender: sender.trim() || 'Anonim',
+    recipient: recipient.trim() || 'Semua Warga YP17',
+    category,
+    text: text.trim(),
+    likes: 0,
+    liked_by: [],
+    comments: []
+  };
+
+  const { error } = await supabase.from('menfess').insert([newPost]);
+
+  if (error) {
+    showToast('Gagal mengirim menfess: ' + error.message, 'error');
+  } else {
+    setText('');
+    setRecipient('');
+    setSender('Anonim');
+    await fetchMenfess();
+    showToast('✨ Menfess terpublikasi ke feed!', 'success');
+    setActiveTab('feed');
+  }
+};
 
     const newPost = {
       sender: sender.trim() || currentUser?.name || 'Anonim',
@@ -510,7 +573,7 @@ export default function SchoolfessApp() {
                   <ArrowLeft className="w-4 h-4" /> Kembali
                 </button>
                 <span className="text-xs font-bold text-rose-400 flex items-center gap-1">
-                  <ShieldCheck className="w-4 h-4" /> Portal Admin
+                  <ShieldCheck className="w-4 h-4" /> Portal Admin / Guru
                 </span>
               </div>
 
@@ -604,7 +667,13 @@ export default function SchoolfessApp() {
                 Schoolfess SMA YP17
               </h1>
               <div className="flex items-center gap-2 text-[11px] text-amber-200/60">
-                <span className="px-2 py-0.5 rounded-full bg-rose-950/80 text-rose-300 border border-rose-800/50 font-bold uppercase text-[9px]">
+                <span className={`px-2 py-0.5 rounded-full border font-bold uppercase text-[9px] ${
+                  currentUser.role === 'admin'
+                    ? 'bg-rose-950/80 text-rose-300 border-rose-800/50'
+                    : currentUser.role === 'guru'
+                    ? 'bg-amber-950/80 text-amber-300 border-amber-700/50'
+                    : 'bg-slate-800 text-slate-300 border-slate-600'
+                  }`}>
                   {currentUser.role}
                 </span>
                 <span>{currentUser.name}</span>
@@ -628,14 +697,22 @@ export default function SchoolfessApp() {
                 Kirim Menfess
               </button>
 
-              {currentUser.role === 'admin' && (
-                <button 
-                  onClick={() => setActiveTab('database')}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${activeTab === 'database' ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-slate-950 shadow-md shadow-amber-500/20' : 'text-rose-400 hover:text-amber-200'}`}
-                >
-                  <ShieldCheck className="w-3.5 h-3.5" /> Data Siswa
-                </button>
-              )}
+              {(currentUser.role === 'admin' || currentUser.role === 'guru') && (
+              <button
+                onClick={() =>
+                  triggerConfirmModal(
+                    'Hapus Menfess',
+                    'Yakin ingin menghapus menfess ini secara permanen?',
+                    'DELETE_MENFESS',
+                    item.id
+                  )
+                }
+                title="Hapus Menfess"
+                className="text-slate-500 hover:text-rose-400 p-1 transition"
+              >
+                <Trash2 className="w-4 h-4" />
+              </button>
+            )}
             </nav>
 
             <button
@@ -789,11 +866,14 @@ export default function SchoolfessApp() {
                 <div>
                   <label className="block text-xs font-semibold text-amber-200/80 mb-1">Pengirim</label>
                   <input 
-                    type="text" 
-                    placeholder="Contoh: Anonim / Cowok XII IPA 1"
-                    value={sender}
-                    onChange={(e) => setSender(e.target.value)}
-                    className="w-full bg-slate-950 border border-amber-500/20 rounded-xl px-3 py-2 text-sm text-slate-200 focus:outline-none focus:border-amber-400"
+                  type="text" 
+                  placeholder="Anonim"
+                  value={sender}
+                  onChange={(e) => setSender(e.target.value)}
+                  disabled={currentUser.role !== 'admin'}
+                  className={`w-full bg-slate-950 border border-amber-500/20 rounded-xl px-3 py-2 text-sm focus:outline-none focus:border-amber-400 ${
+                    currentUser.role !== 'admin' ? 'text-slate-500 cursor-not-allowed' : 'text-slate-200'
+                  }`}
                   />
                 </div>
                 <div>
