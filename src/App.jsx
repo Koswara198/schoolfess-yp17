@@ -157,59 +157,59 @@ export default function SchoolfessApp() {
     }
   };
 
-  // Handler Login Admin
-const handleAdminLogin = (e) => {
-  e.preventDefault();
-  setLoginError('');
+  // Handler Login Admin & Guru
+  const handleAdminLogin = (e) => {
+    e.preventDefault();
+    setLoginError('');
 
-  const inputUser = loginIdentifier.trim();
-  const inputPass = loginPassword;
+    const inputUser = loginIdentifier.trim();
+    const inputPass = loginPassword;
 
-  // === CEK ADMIN ===
-  if (
-    inputUser === import.meta.env.VITE_ADMIN_USER &&
-    inputPass === import.meta.env.VITE_ADMIN_PASS
-  ) {
-    const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
-    setCurrentUser(user);
-    setActiveTab('database');
-    showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
-    return;
-  }
+    // === CEK ADMIN ===
+    if (
+      inputUser === import.meta.env.VITE_ADMIN_USER &&
+      inputPass === import.meta.env.VITE_ADMIN_PASS
+    ) {
+      const user = { role: 'admin', name: 'Administrator YP17', nisn: 'admin_yp17' };
+      setCurrentUser(user);
+      setActiveTab('database');
+      showToast('Berhasil masuk sebagai Admin YP17 🛡️', 'success');
+      return;
+    }
 
-  // === CEK GURU ===
-  const teachers = [
-    {
-      user: import.meta.env.VITE_TEACHER_USER_1,
-      pass: import.meta.env.VITE_TEACHER_PASS_1,
-      name: import.meta.env.VITE_TEACHER_NAME_1,
-    },
-    {
-      user: import.meta.env.VITE_TEACHER_USER_2,
-      pass: import.meta.env.VITE_TEACHER_PASS_2,
-      name: import.meta.env.VITE_TEACHER_NAME_2,
-    },
-    {
-      user: import.meta.env.VITE_TEACHER_USER_3,
-      pass: import.meta.env.VITE_TEACHER_PASS_3,
-      name: import.meta.env.VITE_TEACHER_NAME_3,
-    },
-  ];
+    // === CEK GURU ===
+    const teachers = [
+      {
+        user: import.meta.env.VITE_TEACHER_USER_1,
+        pass: import.meta.env.VITE_TEACHER_PASS_1,
+        name: import.meta.env.VITE_TEACHER_NAME_1,
+      },
+      {
+        user: import.meta.env.VITE_TEACHER_USER_2,
+        pass: import.meta.env.VITE_TEACHER_PASS_2,
+        name: import.meta.env.VITE_TEACHER_NAME_2,
+      },
+      {
+        user: import.meta.env.VITE_TEACHER_USER_3,
+        pass: import.meta.env.VITE_TEACHER_PASS_3,
+        name: import.meta.env.VITE_TEACHER_NAME_3,
+      },
+    ];
 
-  const matchedTeacher = teachers.find(
-    (t) => t.user && inputUser === t.user && inputPass === t.pass
-  );
+    const matchedTeacher = teachers.find(
+      (t) => t.user && inputUser === t.user && inputPass === t.pass
+    );
 
-  if (matchedTeacher) {
-    const user = { role: 'guru', name: matchedTeacher.name, nisn: `guru_${matchedTeacher.user}` };
-    setCurrentUser(user);
-    setActiveTab('feed'); // guru langsung ke feed, bukan database
-    showToast(`Berhasil masuk sebagai Guru: ${matchedTeacher.name} 👨‍🏫`, 'success');
-    return;
-  }
+    if (matchedTeacher) {
+      const user = { role: 'guru', name: matchedTeacher.name, nisn: `guru_${matchedTeacher.user}` };
+      setCurrentUser(user);
+      setActiveTab('feed'); // guru langsung ke feed
+      showToast(`Berhasil masuk sebagai Guru: ${matchedTeacher.name} 👨‍🏫`, 'success');
+      return;
+    }
 
-  setLoginError('Username atau Password salah!');
-};
+    setLoginError('Username atau Password salah!');
+  };
 
   // Handler Logout
   const handleLogout = () => {
@@ -221,40 +221,16 @@ const handleAdminLogin = (e) => {
     showToast('Berhasil keluar dari sesi.', 'info');
   };
 
-  // Handler Kirim Menfess (Full AJAX + Auto Fetch + React Bits Toast)
-const handleSendMenfess = async (e) => {
-  e.preventDefault();
-  if (!text.trim()) {
-    showToast('Isi pesan menfess wajib diisi!', 'error');
-    return;
-  }
-
-  const newPost = {
-    sender: sender.trim() || 'Anonim',
-    recipient: recipient.trim() || 'Semua Warga YP17',
-    category,
-    text: text.trim(),
-    likes: 0,
-    liked_by: [],
-    comments: []
-  };
-
-  const { error } = await supabase.from('menfess').insert([newPost]);
-
-  if (error) {
-    showToast('Gagal mengirim menfess: ' + error.message, 'error');
-  } else {
-    setText('');
-    setRecipient('');
-    setSender('Anonim');
-    await fetchMenfess();
-    showToast('✨ Menfess terpublikasi ke feed!', 'success');
-    setActiveTab('feed');
-  }
-};
+  // Handler Kirim Menfess
+  const handleSendMenfess = async (e) => {
+    e.preventDefault();
+    if (!text.trim()) {
+      showToast('Isi pesan menfess wajib diisi!', 'error');
+      return;
+    }
 
     const newPost = {
-      sender: sender.trim() || currentUser?.name || 'Anonim',
+      sender: sender.trim() || 'Anonim',
       recipient: recipient.trim() || 'Semua Warga YP17',
       category,
       text: text.trim(),
@@ -270,8 +246,7 @@ const handleSendMenfess = async (e) => {
     } else {
       setText('');
       setRecipient('');
-      setSender('');
-      
+      setSender('Anonim');
       await fetchMenfess();
       showToast('✨ Menfess terpublikasi ke feed!', 'success');
       setActiveTab('feed');
@@ -314,7 +289,7 @@ const handleSendMenfess = async (e) => {
 
     const newComment = {
       id: Date.now(),
-      author: currentUser?.role === 'admin' ? 'Admin YP17' : currentUser?.name || 'Siswa YP17',
+      author: currentUser?.role === 'admin' ? 'Admin YP17' : currentUser?.role === 'guru' ? currentUser?.name : currentUser?.name || 'Siswa YP17',
       text: commentText.trim()
     };
 
@@ -386,7 +361,7 @@ const handleSendMenfess = async (e) => {
         showToast('Gagal menghapus menfess: ' + error.message, 'error');
       } else {
         setMenfessList(menfessList.filter(m => m.id !== payload));
-        showToast('Menfess berhasil dihapus oleh admin.', 'info');
+        showToast('Menfess berhasil dihapus.', 'info');
       }
     }
   };
@@ -586,12 +561,12 @@ const handleSendMenfess = async (e) => {
 
               <form onSubmit={handleAdminLogin} className="space-y-4">
                 <div>
-                  <label className="block text-xs font-semibold text-amber-200/80 mb-1">Username Admin</label>
+                  <label className="block text-xs font-semibold text-amber-200/80 mb-1">Username Admin / Guru</label>
                   <div className="relative">
                     <User className="absolute left-3 top-3 text-amber-500/60 w-4 h-4" />
                     <input
                       type="text"
-                      placeholder="Username Admin"
+                      placeholder="Username Admin / Guru"
                       value={loginIdentifier}
                       onChange={(e) => setLoginIdentifier(e.target.value)}
                       required
@@ -602,12 +577,12 @@ const handleSendMenfess = async (e) => {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-amber-200/80 mb-1">Password Admin</label>
+                  <label className="block text-xs font-semibold text-amber-200/80 mb-1">Password</label>
                   <div className="relative">
                     <Lock className="absolute left-3 top-3 text-amber-500/60 w-4 h-4" />
                     <input
                       type="password"
-                      placeholder="Password Admin"
+                      placeholder="Password"
                       value={loginPassword}
                       onChange={(e) => setLoginPassword(e.target.value)}
                       required
@@ -620,7 +595,7 @@ const handleSendMenfess = async (e) => {
                   type="submit"
                   className="w-full bg-gradient-to-r from-rose-600 to-amber-500 hover:from-rose-500 hover:to-amber-400 text-slate-950 font-extrabold py-2.5 rounded-xl text-sm transition shadow-lg shadow-rose-600/20 flex items-center justify-center gap-2"
                 >
-                  Masuk Dashboard Admin
+                  Masuk Dashboard
                 </button>
               </form>
             </div>
@@ -697,22 +672,14 @@ const handleSendMenfess = async (e) => {
                 Kirim Menfess
               </button>
 
-              {(currentUser.role === 'admin' || currentUser.role === 'guru') && (
-              <button
-                onClick={() =>
-                  triggerConfirmModal(
-                    'Hapus Menfess',
-                    'Yakin ingin menghapus menfess ini secara permanen?',
-                    'DELETE_MENFESS',
-                    item.id
-                  )
-                }
-                title="Hapus Menfess"
-                className="text-slate-500 hover:text-rose-400 p-1 transition"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
-            )}
+              {currentUser.role === 'admin' && (
+                <button 
+                  onClick={() => setActiveTab('database')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 ${activeTab === 'database' ? 'bg-gradient-to-r from-amber-500 to-rose-600 text-slate-950 shadow-md shadow-amber-500/20' : 'text-rose-400 hover:text-amber-200'}`}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5" /> Data Siswa
+                </button>
+              )}
             </nav>
 
             <button
@@ -793,10 +760,11 @@ const handleSendMenfess = async (e) => {
                             {item.category}
                           </span>
 
-                          {currentUser.role === 'admin' && (
+                          {/* Tombol Hapus untuk Admin & Guru */}
+                          {(currentUser.role === 'admin' || currentUser.role === 'guru') && (
                             <button
                               onClick={() => triggerConfirmModal('Hapus Menfess', 'Yakin ingin menghapus menfess ini secara permanen?', 'DELETE_MENFESS', item.id)}
-                              title="Hapus Menfess (Admin)"
+                              title="Hapus Menfess"
                               className="text-slate-500 hover:text-rose-400 p-1 transition"
                             >
                               <Trash2 className="w-4 h-4" />
